@@ -1,4 +1,5 @@
-#include <iostream>
+#include <stdint.h>
+#include <stdio.h>
 
 uint64_t inWhiteCheck;
 uint64_t inBlackCheck;
@@ -44,11 +45,12 @@ void loadFEN(char *FENPosition) {
 
         if(*position == '/') {
             row++;
+            col = 0;
             continue;
         }
         
         if(*position > 48 && *position < 57) {
-            row += *position - 48;
+            col += *position - 48;
             continue;
         }
 
@@ -80,9 +82,9 @@ void loadFEN(char *FENPosition) {
                 board[8*row + col] = PAWN | color;
                 break;
         }
-    }
 
-    printf("HI");
+        col++;
+    }
 
     position++;
     playerToMove = *position == 'w'? WHITE : BLACK;
@@ -114,23 +116,75 @@ void loadFEN(char *FENPosition) {
 
     position += 2;
 
-   sscanf(position, "%d %d", &numOfHalveMoves, &numOfFullMoves);
+    sscanf(position, "%d %d", &numOfHalveMoves, &numOfFullMoves);
 }
 
 void printBoard() {
-
-    int i = 0;
-
-    char* p = board;
-
-    for(; *p != ' '; p++) {
-        printf("%d ", &p);
-        i++;
+    for(int i = 1; i < 65; i++) {
+        printf("%d ", board[i-1]);
         if(i % 8 == 0) printf("\n");
     }
+    printf("\n");
+}
+
+void printBitmask(uint64_t mask) {
+  for (int i = 1; i < 65; i++) {
+    int t = (mask & (((uint64_t) 1) << (i-1))) == 0? 0 : 1;
+    printf("%d ", t);
+    if (i % 8 == 0)
+      printf("\n");
+  }
+
+  printf("\n");
+}
+
+uint64_t getPossibleMoves(int position) {
+
+  uint64_t possibleMoves;
+
+  //get Color of piece and change this below with color
+  possibleMoves &= !tilesWithPieces;
+
+  return possibleMoves;
+}
+
+uint64_t getPossibleMovesPawn(int position) {
+
+  return 0;
+}
+
+uint64_t getPossibleMovesKnight(int position) {
+
+  return 0;
+}
+
+uint64_t getPossibleMovesBishop(int position) { return 0; }
+
+uint64_t getPossibleMovesRook(int position) { return 0; }
+
+uint64_t getPossibleMovesQueen(int position) {
+  return getPossibleMovesBishop(position) | getPossibleMovesRook(position);
+}
+
+uint64_t getPossibleMovesKing(int position) {
+  uint64_t startingPos = ((uint64_t)1) << position;
+  uint64_t possibleMoves;
+
+  possibleMoves |= startingPos << 1;
+  possibleMoves |= startingPos << 7;
+  possibleMoves |= startingPos << 8;
+  possibleMoves |= startingPos << 9;
+
+  possibleMoves |= startingPos >> 1;
+  possibleMoves |= startingPos >> 7;
+  possibleMoves |= startingPos >> 8;
+  possibleMoves |= startingPos >> 9;
+
+  return possibleMoves;
 }
 
 int main() {
     loadFEN("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
     printBoard();
+    printBitmask(getPossibleMovesKing(2));
 }
