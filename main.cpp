@@ -84,8 +84,6 @@ void loadFEN(char *FENPosition) {
         }
     }
 
-    cout << "HI";
-
     position++;
     playerToMove = *position == 'w'? WHITE : BLACK;
     position += 2;
@@ -131,7 +129,6 @@ void printBoard() {
 }
 
 int main() {
-    cout << "Test";
     loadFEN("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
     printBoard();
 }
