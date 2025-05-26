@@ -14,6 +14,15 @@ uint64_t tilesWithBishops;
 uint64_t tilesWithQueens;
 uint64_t tilesWithKings;
 
+#define hRow 0b0000000100000001000000010000000100000001000000010000000100000001
+#define gRow hRow << 1
+#define fRow hRow << 2
+#define eRow hRow << 3
+#define dRow hRow << 4
+#define cRow hRow << 5
+#define bRow hRow << 6
+#define aRow hRow << 7
+
 unsigned char playerToMove;
 int castlingAbility[4];
 int epsquare;
@@ -128,10 +137,10 @@ void printBoard() {
 }
 
 void printBitmask(uint64_t mask) {
-  for (int i = 1; i < 65; i++) {
+  for (int i = 64; i >= 1; i--) {
     int t = (mask & (((uint64_t) 1) << (i-1))) == 0? 0 : 1;
     printf("%d ", t);
-    if (i % 8 == 0)
+    if ((i-1) % 8 == 0)
       printf("\n");
   }
 
@@ -141,6 +150,7 @@ void printBitmask(uint64_t mask) {
 uint64_t getPossibleMoves(int position) {
 
   uint64_t possibleMoves;
+  uint64_t startingPos = ((uint64_t)1) << position;
 
   //get Color of piece and change this below with color
   possibleMoves &= !tilesWithPieces;
@@ -148,43 +158,70 @@ uint64_t getPossibleMoves(int position) {
   return possibleMoves;
 }
 
-uint64_t getPossibleMovesPawn(int position) {
+uint64_t getPossibleMovesPawn(uint64_t startingPos) {
 
   return 0;
 }
 
-uint64_t getPossibleMovesKnight(int position) {
+uint64_t getPossibleMovesKnight(uint64_t startingPos) {
+  uint64_t possibleMoves = 0;
 
-  return 0;
+  if((startingPos & aRow) == 0) {
+    possibleMoves |= startingPos << 17;
+    possibleMoves |= startingPos >> 15;
+  }
+
+  if((startingPos & (aRow | bRow)) == 0) {
+    possibleMoves |= startingPos >> 6;
+    possibleMoves |= startingPos << 10;
+  }
+
+  if((startingPos & (hRow | gRow)) == 0) {
+    possibleMoves |= startingPos << 6;
+    possibleMoves |= startingPos >> 10;
+  }
+
+  if((startingPos & hRow) == 0) {
+    possibleMoves |= startingPos << 15;
+    possibleMoves |= startingPos >> 17;
+  }
+
+  return possibleMoves;
 }
 
-uint64_t getPossibleMovesBishop(int position) { return 0; }
+uint64_t getPossibleMovesBishop(uint64_t startingPos) { return 0; }
 
-uint64_t getPossibleMovesRook(int position) { return 0; }
+uint64_t getPossibleMovesRook(uint64_t startingPos) { return 0; }
 
-uint64_t getPossibleMovesQueen(int position) {
-  return getPossibleMovesBishop(position) | getPossibleMovesRook(position);
+uint64_t getPossibleMovesQueen(uint64_t startingPos) {
+  return getPossibleMovesBishop(startingPos) | getPossibleMovesRook(startingPos);
 }
 
-uint64_t getPossibleMovesKing(int position) {
-  uint64_t startingPos = ((uint64_t)1) << position;
-  uint64_t possibleMoves;
+uint64_t getPossibleMovesKing(uint64_t startingPos) {
+  uint64_t possibleMoves = 0;
 
-  possibleMoves |= startingPos << 1;
-  possibleMoves |= startingPos << 7;
   possibleMoves |= startingPos << 8;
-  possibleMoves |= startingPos << 9;
-
-  possibleMoves |= startingPos >> 1;
-  possibleMoves |= startingPos >> 7;
   possibleMoves |= startingPos >> 8;
-  possibleMoves |= startingPos >> 9;
+
+  if((startingPos & aRow) == 0) {
+    possibleMoves |= startingPos << 1;
+    possibleMoves |= startingPos << 9;
+    possibleMoves |= startingPos >> 7;
+  }
+
+  if((startingPos & hRow) == 0) {
+    possibleMoves |= startingPos << 7;
+    possibleMoves |= startingPos >> 1;
+    possibleMoves |= startingPos >> 9;
+  }
 
   return possibleMoves;
 }
 
 int main() {
+    uint64_t startingPos = ((uint64_t)1) << 7;
+
     loadFEN("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
     printBoard();
-    printBitmask(getPossibleMovesKing(2));
+    printBitmask(getPossibleMovesKing(startingPos));
 }
