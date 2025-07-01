@@ -1,13 +1,31 @@
 #include <stdint.h>
 #include <stdio.h>
+#include <intrin.h>
+
+//types: PAWN = 1, KNIGHT = 2, BISHOP = 3, ROOK = 4, QUEEN = 5, KING = 6, WHITE = 8, BLACK = 16
+typedef unsigned int PieceType;
+#define PAWN   1
+#define KNIGHT 2
+#define BISHOP 3
+#define ROOK   4
+#define QUEEN  5
+#define KING   6
+
+#define WHITE  8
+#define BLACK  16
+
+typedef struct {
+  PieceType pieceType;
+  uint64_t attackingBitBoard;
+} Piece;
+
+Piece board[64];
 
 uint64_t inWhiteCheck;
 uint64_t inBlackCheck;
-uint64_t tilesWithPieces;
 uint64_t tilesWithWhitePieces;
 uint64_t tilesWithBlackPieces;
-
-unsigned char board[64];
+uint64_t tilesWithPieces() {return tilesWithWhitePieces | tilesWithBlackPieces;}
 
 uint64_t tilesWithWhiteRooks;
 uint64_t tilesWithWhitePawns;
@@ -41,7 +59,7 @@ unsigned char playerToMove;
 /**
  * @brief Updates tilesWithSameColoredPieces and tilesWithOppositeColoredPieces according to playerToMove
 */
- void updateTilesWithSameColoredPieces() {
+void updateTilesWithSameColoredPieces() {
   if(playerToMove == 8) {
     tilesWithSameColoredPieces = tilesWithWhitePieces;
     tilesWithOppositeColoredPieces = tilesWithBlackPieces;
@@ -52,6 +70,12 @@ unsigned char playerToMove;
   }
 }
 
+/**
+ * @brief Bitboard representation of the chess board files and ranks.
+ * 
+ * The bitboards are defined as 64-bit unsigned integers, where each bit represents a square on the chess board.
+ * The least significant bit (LSB) corresponds to the a1 square, and the most significant bit (MSB) corresponds to the h8 square.
+ */
 #define hFile 0b0000000100000001000000010000000100000001000000010000000100000001ULL
 const uint64_t gFile = (hFile << 1);
 const uint64_t fFile = (hFile << 2);
@@ -85,18 +109,19 @@ int numOfHalveMoves;
 //Fullmove number: The number of the full moves. It starts at 1 and is incremented after Black's move.
 int numOfFullMoves;
 
-//Pieces: PAWN = 1, KNIGHT = 2, BISHOP = 3, ROOK = 4, QUEEN = 5, KING = 6, WHITE = 8, BLACK = 16
-typedef int Piece;
-#define PAWN   1
-#define KNIGHT 2
-#define BISHOP 3
-#define ROOK   4
-#define QUEEN  5
-#define KING   6
+//Stores the last Move done. OldPos = [0], newPos = [1]
+int lastMove[2];
 
-#define WHITE  8
-#define BLACK  16
+//Stores all the possible Moves in the current position
+unsigned short possibleMoves[218];
 
+/**
+ * @brief Loads the position from the given FEN-String into the programm
+ * 
+ * @param FENPosition The FEN-String of a position
+ * 
+ * This Function iterates over the FEN-String loading it into the programm
+ */
 void loadFEN(char *FENPosition) {
 
     char *position = FENPosition;
@@ -130,22 +155,22 @@ void loadFEN(char *FENPosition) {
         if(row < 8 && col < 8) {
           switch(piece) {
               case 'r':
-                  board[8*row + col] = ROOK | color;
+                  board[8*row + col].pieceType = ROOK | color;
                   break;
               case 'n':
-                  board[8*row + col] = KNIGHT | color;
+                  board[8*row + col].pieceType = KNIGHT | color;
                   break;
               case 'b':
-                  board[8*row + col] = BISHOP | color;
+                  board[8*row + col].pieceType = BISHOP | color;
                   break;
               case 'q':
-                  board[8*row + col] = QUEEN | color;
+                  board[8*row + col].pieceType = QUEEN | color;
                   break;
               case 'k':
-                  board[8*row + col] = KING | color;
+                  board[8*row + col].pieceType = KING | color;
                   break;
               case 'p':
-                  board[8*row + col] = PAWN | color;
+                  board[8*row + col].pieceType = PAWN | color;
                   break;
           }
         } else {
@@ -188,14 +213,28 @@ void loadFEN(char *FENPosition) {
     sscanf(position, "%d %d", &numOfHalveMoves, &numOfFullMoves);
 }
 
+/**
+ * @brief Prints the current state of the chess board.
+ * 
+ * This function iterates through the board array and prints the piece type at each position.
+ * It formats the output to display the board in an 8x8 grid.
+ */
 void printBoard() {
     for(int i = 1; i < 65; i++) {
-        printf("%d ", board[i-1]);
+        printf("%d ", board[i-1].pieceType);
         if(i % 8 == 0) printf("\n");
     }
     printf("\n");
 }
 
+/**
+ * @brief Prints a bitmask representing the bits of a 64-bit integer.
+ * 
+ * This function prints the bits of a 64-bit integer in a formatted manner,
+ * displaying each bit as either 0 or 1, with a newline after every 8 bits.
+ * 
+ * @param mask The 64-bit integer to be printed as a bitmask.
+ */
 void printBitmask(uint64_t mask) {
   for (int i = 64; i >= 1; i--) {
     int t = (mask & (((uint64_t) 1) << (i-1))) == 0? 0 : 1;
@@ -207,7 +246,43 @@ void printBitmask(uint64_t mask) {
   printf("\n");
 }
 
-uint64_t getPossibleMovesPawn(uint64_t startingPos) {
+/**
+ * @brief Checks if a position is not occupied by a piece on the given bitboard.
+ * 
+ * This function checks if a specific position (bit) is not set in the provided bitboard.
+ * 
+ * @param pos The position to check (0-63).
+ * @param bitboard The bitboard to check against.
+ * @return bool Returns true if the position is not occupied, false otherwise.
+ */
+bool isNotOn(uint64_t pos, uint64_t bitboard) {
+  return (pos & bitboard) == 0;
+}
+
+/**
+ * @brief Checks if a position is occupied by a piece on the given bitboard.
+ * 
+ * This function checks if a specific position (bit) is set in the provided bitboard.
+ * 
+ * @param pos The position to check (0-63).
+ * @param bitboard The bitboard to check against.
+ * @return bool Returns true if the position is occupied, false otherwise.
+ */
+bool isOn(uint64_t pos, uint64_t bitboard) {
+  return (pos & bitboard) != 0;
+}
+
+/**
+ * @brief Generates a bitboard representing the possible moves for a pawn at a given position.
+ * 
+ * This function calculates the possible moves for a pawn based on its current position, taking into account
+ * the edges of the board and the presence of other pieces and the option to en passant. It returns a bitboard representing the squares
+ * where the pawn can move.
+ * 
+ * @param startingPos The position of the pawn on the board (0-63).
+ * @return uint64_t A bitboard representing the possible moves for the pawn.
+ */
+uint64_t getPossibleMoveBitBoardPawn(uint64_t startingPos) {
   uint64_t possibleMoves = 0;
 
   if(playerToMove == WHITE && isNotOn(startingPos, eigthRank)) {
@@ -217,9 +292,9 @@ uint64_t getPossibleMovesPawn(uint64_t startingPos) {
     if(isNotOn(startingPos, aFile) && isOn(startingPos << 9, tilesWithOppositeColoredPieces | (((uint64_t)1) << epsquare))) {
       possibleMoves |= startingPos << 9;
     }
-    if(isNotOn(startingPos << 8, tilesWithPieces)) {
+    if(isNotOn(startingPos << 8, tilesWithPieces())) {
       possibleMoves |= startingPos << 8;
-      if(isOn(startingPos, secondRank) && isNotOn(startingPos << 16, tilesWithPieces)) {
+      if(isOn(startingPos, secondRank) && isNotOn(startingPos << 16, tilesWithPieces())) {
         possibleMoves |= startingPos << 16;
       }
     }
@@ -230,9 +305,9 @@ uint64_t getPossibleMovesPawn(uint64_t startingPos) {
     if(isNotOn(startingPos, aFile) && isOn(startingPos >> 7, tilesWithOppositeColoredPieces | (((uint64_t)1) << epsquare))) {
       possibleMoves |= startingPos >> 7;
     }
-    if(isNotOn(startingPos >> 8, tilesWithPieces)) {
+    if(isNotOn(startingPos >> 8, tilesWithPieces())) {
       possibleMoves |= startingPos >> 8;
-      if(isOn(startingPos, seventhRank) && isNotOn(startingPos >> 16, tilesWithPieces)) {
+      if(isOn(startingPos, seventhRank) && isNotOn(startingPos >> 16, tilesWithPieces())) {
         possibleMoves |= startingPos >> 16;
       }
     }
@@ -241,7 +316,16 @@ uint64_t getPossibleMovesPawn(uint64_t startingPos) {
   return possibleMoves;
 }
 
-uint64_t getPossibleMovesKnight(uint64_t startingPos) {
+/**
+ * @brief Generates a bitboard representing the possible moves for a knight at a given position.
+ * 
+ * This function calculates the possible moves for a knight based on its current position, taking into account
+ * the edges of the board. It returns a bitboard representing the squares where the knight can move.
+ * 
+ * @param startingPos The position of the knight on the board (0-63).
+ * @return uint64_t A bitboard representing the possible moves for the knight.
+ */
+uint64_t getPossibleMoveBitBoardKnight(uint64_t startingPos) {
   uint64_t possibleMoves = 0;
 
   if(isNotOn(startingPos, aFile)) {
@@ -267,7 +351,17 @@ uint64_t getPossibleMovesKnight(uint64_t startingPos) {
   return possibleMoves;
 }
 
-uint64_t getPossibleMovesBishop(uint64_t startingPos) { 
+/**
+ * @brief Generates a bitboard representing the possible moves for a bishop at a given position.
+ * 
+ * This function calculates the possible moves for a bishop based on its current position, taking into account
+ * the edges of the board and the presence of other pieces. It returns a bitboard representing the squares
+ * where the bishop can move.
+ * 
+ * @param startingPos The position of the bishop on the board (0-63).
+ * @return uint64_t A bitboard representing the possible moves for the bishop.
+ */
+uint64_t getPossibleMoveBitBoardBishop(uint64_t startingPos) { 
   uint64_t possibleMoves = 0;
 
   uint64_t pointer = startingPos;
@@ -314,7 +408,17 @@ uint64_t getPossibleMovesBishop(uint64_t startingPos) {
   return possibleMoves;
 }
 
-uint64_t getPossibleMovesRook(uint64_t startingPos) { 
+/**
+ * @brief Generates a bitboard representing the possible moves for a rook at a given position.
+ * 
+ * This function calculates the possible moves for a rook based on its current position, taking into account
+ * the edges of the board and the presence of other pieces. It returns a bitboard representing the squares
+ * where the rook can move.
+ * 
+ * @param startingPos The position of the rook on the board (0-63).
+ * @return uint64_t A bitboard representing the possible moves for the rook.
+ */
+uint64_t getPossibleMoveBitBoardRook(uint64_t startingPos) { 
   uint64_t possibleMoves = 0;
 
   uint64_t pointer = startingPos;
@@ -356,11 +460,20 @@ uint64_t getPossibleMovesRook(uint64_t startingPos) {
   return possibleMoves;
  }
 
-uint64_t getPossibleMovesQueen(uint64_t startingPos) {
-  return getPossibleMovesBishop(startingPos) | getPossibleMovesRook(startingPos);
+uint64_t getPossibleMoveBitBoardQueen(uint64_t startingPos) {
+  return getPossibleMoveBitBoardBishop(startingPos) | getPossibleMoveBitBoardRook(startingPos);
 }
 
-uint64_t getPossibleMovesKing(uint64_t startingPos) {
+/**
+ * @brief Generates a bitboard representing the possible moves for a king at a given position.
+ * 
+ * This function calculates the possible moves for a king based on its current position, taking into account
+ * the edges of the board and castling rights. It returns a bitboard representing the squares where the king can move.
+ * 
+ * @param startingPos The position of the king on the board (0-63).
+ * @return uint64_t A bitboard representing the possible moves for the king.
+ */
+uint64_t getPossibleMoveBitBoardKing(uint64_t startingPos) {
   uint64_t possibleMoves = 0;
 
   possibleMoves |= startingPos << 8;
@@ -378,70 +491,226 @@ uint64_t getPossibleMovesKing(uint64_t startingPos) {
     possibleMoves |= startingPos >> 9;
   }
 
-  if((castlingAbility[0] || castlingAbility[2]) && isNotOn(startingPos >> 1, tilesWithPieces) && isNotOn(startingPos >> 2, tilesWithPieces)) {
+  if((castlingAbility[0] || castlingAbility[2]) && isNotOn(startingPos >> 1, tilesWithPieces()) && isNotOn(startingPos >> 2, tilesWithPieces())) {
     possibleMoves |= startingPos >> 2; // kingside castling
   }
 
-  if((castlingAbility[1] || castlingAbility[3]) && isNotOn(startingPos << 1, tilesWithPieces) && isNotOn(startingPos << 2, tilesWithPieces)) {
+  if((castlingAbility[1] || castlingAbility[3]) && isNotOn(startingPos << 1, tilesWithPieces()) && isNotOn(startingPos << 2, tilesWithPieces())) {
     possibleMoves |= startingPos << 2; // queenside castling
   }
 
   return possibleMoves;
 }
 
-uint64_t getPossibleMoves(int position) {
+/**
+ * @brief Generates a bitboard representing the possible moves for a piece at a given position.
+ * 
+ * This function checks the type of the piece at the specified position and calls the appropriate
+ * function to get the possible moves for that piece type. It returns a bitboard representing the
+ * squares where the piece can move.
+ * 
+ * @param position The position of the piece on the board (0-63).
+ * @return uint64_t A bitboard representing the possible moves for the piece.
+ */
+uint64_t getPossibleMoveBitBoard(int position) {
 
   uint64_t possibleMoves = 0;
   uint64_t startingPos = ((uint64_t)1) << position;
 
-  switch(board[position]) {
-    case PAWN | WHITE:
-      possibleMoves = getPossibleMovesPawn(startingPos);
+  int pieceType = board[position].pieceType & 7; // Mask to get the piece type without color
+
+  switch(pieceType) {
+    case PAWN:
+      possibleMoves = getPossibleMoveBitBoardPawn(startingPos);
       break;
-    case PAWN | BLACK:
-      possibleMoves = getPossibleMovesPawn(startingPos);
+    case KNIGHT:
+      possibleMoves = getPossibleMoveBitBoardKnight(startingPos);
       break;
-    case KNIGHT | WHITE:
-      possibleMoves = getPossibleMovesKnight(startingPos);
+    case BISHOP:
+      possibleMoves = getPossibleMoveBitBoardBishop(startingPos);
       break;
-    case KNIGHT | BLACK:
-      possibleMoves = getPossibleMovesKnight(startingPos);
+    case ROOK:
+      possibleMoves = getPossibleMoveBitBoardRook(startingPos);
       break;
-    case BISHOP | WHITE:
-      possibleMoves = getPossibleMovesBishop(startingPos);
+    case QUEEN:
+      possibleMoves = getPossibleMoveBitBoardQueen(startingPos);
       break;
-    case BISHOP | BLACK:
-      possibleMoves = getPossibleMovesBishop(startingPos);
-      break;
-    case ROOK | WHITE:
-      possibleMoves = getPossibleMovesRook(startingPos);
-      break;
-    case ROOK | BLACK:
-      possibleMoves = getPossibleMovesRook(startingPos);
-      break;
-    case QUEEN | WHITE:
-      possibleMoves = getPossibleMovesQueen(startingPos);
-      break;
-    case QUEEN | BLACK:
-      possibleMoves = getPossibleMovesQueen(startingPos);
-      break;
-    case KING | WHITE:
-      possibleMoves = getPossibleMovesKing(startingPos);
-      break;
-    case KING | BLACK:
-      possibleMoves = getPossibleMovesKing(startingPos);
+    case KING:
+      possibleMoves = getPossibleMoveBitBoardKing(startingPos);
       break;
   }
 
   return possibleMoves;
 }
 
-bool isNotOn(uint64_t pos, uint64_t bitboard) {
-  return (pos & bitboard) == 0;
+/**
+ * @brief Generates a bitboard representing the squares where the balck king is in check.
+ * 
+ * This function iterates through all pieces on the board, checking if they are white pieces
+ * and if they can attack the square of the black king. It updates the attackingBitBoard for
+ * each white- QUEEN/ROOK/BISHOP and the current piece move and accumulates the squares where the black king is in check.
+ * 
+ * @return uint64_t A bitboard representing the squares where the black king is in check.
+ */
+uint64_t generateWhiteCheckBitBoard() {
+  uint64_t inWhiteCheckTMP = 0;
+
+  for(int i = 0; i < 64; i++) {
+    if(board[i].pieceType == 0 || board[i].pieceType > 15) continue;
+    if(board[i].pieceType == (QUEEN | WHITE) || board[i].pieceType == (ROOK | WHITE) || board[i].pieceType == (BISHOP | WHITE) || i == lastMove[1]) {
+      board[i].attackingBitBoard = getPossibleMoveBitBoard(i);
+    }
+    inWhiteCheckTMP |= board[i].attackingBitBoard;
+  }
+
+  return inWhiteCheckTMP;
 }
 
-bool isOn(uint64_t pos, uint64_t bitboard) {
-  return (pos & bitboard) != 0;
+/**
+ * @brief Generates a bitboard representing the squares where the white king is in check.
+ * 
+ * This function iterates through all pieces on the board and updates the attackingBitBoard for
+ * each black- QUEEN/ROOK/BISHOP and the current piece move and accumulates the squares where the white king is in check.
+ * 
+ * @return uint64_t A bitboard representing the squares where the white king is in check.
+ */
+uint64_t generateBlackCheckBitBoard() {
+  uint64_t inBlackCheckTMP = 0;
+
+  for(int i = 0; i < 64; i++) {
+    if(board[i].pieceType < 16) continue;
+    if(board[i].pieceType == (QUEEN | BLACK) || board[i].pieceType == (ROOK | BLACK) || board[i].pieceType == (BISHOP | BLACK) || i == lastMove[1]) {
+      board[i].attackingBitBoard = getPossibleMoveBitBoard(i);
+    }
+    inBlackCheckTMP |= board[i].attackingBitBoard;
+  }
+
+  return inBlackCheckTMP;
+}
+
+/**
+ * @brief Simulates a move by updating the board and the tiles with pieces.
+ * 
+ * @param oldPos The position of the piece before the move.
+ * @param newPos The position of the piece after the move.
+ * 
+ * @return bool Returns true if the move would result in the king being in check, otherwise returns false.
+ * 
+ * @note This function does not check for legality of the move, it only updates the board and the tiles with pieces.
+ */
+bool simultateMove(int oldPos, int newPos) {
+
+  bool invalidMove = false;
+
+  // Update the board
+  Piece temp = board[newPos];
+  board[newPos] = board[oldPos];
+  board[oldPos] = (Piece){0, 0};
+
+  // Update the last move
+  int oldLastMove[2];
+  oldLastMove[0] = lastMove[0];
+  oldLastMove[1] = lastMove[1];
+  
+  lastMove[0] = oldPos;
+  lastMove[1] = newPos;
+
+  // Update the tiles with pieces
+  if(board[newPos].pieceType & WHITE) {
+    tilesWithWhitePieces &= ~(((uint64_t)1) << oldPos);
+    tilesWithWhitePieces |= (((uint64_t)1) << newPos);
+    if(generateBlackCheckBitBoard() & tilesWithWhiteKings) { invalidMove = true; };
+  } else {
+    tilesWithBlackPieces &= ~(((uint64_t)1) << oldPos);
+    tilesWithBlackPieces |= (((uint64_t)1) << newPos);
+    if(generateWhiteCheckBitBoard() & tilesWithBlackKings) { invalidMove = true; };
+  }
+
+  // Undo the move
+  board[oldPos] = board[newPos];
+  board[newPos] = temp;
+
+  lastMove[0] = oldLastMove[0];
+  lastMove[1] = oldLastMove[1];
+
+  if(board[oldPos].pieceType & WHITE) {
+    tilesWithWhitePieces &= ~(((uint64_t)1) << newPos);
+    tilesWithWhitePieces |= (((uint64_t)1) << oldPos);
+  } else {
+    tilesWithBlackPieces &= ~(((uint64_t)1) << newPos);
+    tilesWithBlackPieces |= (((uint64_t)1) << oldPos);
+  }
+
+  return invalidMove;
+}
+
+/**
+ * @brief Checks if a move is legal by simulating the move and checking if it results in the king being in check.
+ * 
+ * @param oldPos The position of the piece before the move.
+ * @param newPos The position of the piece after the move.
+ * 
+ * @return bool Returns true if the move is legal, otherwise returns false.
+ */
+bool moveIsLegal(int oldPos, int newPos) {
+  // Check if the move is valid
+  if(oldPos < 0 || oldPos >= 64 || newPos < 0 || newPos >= 64) return false;
+
+  if(oldPos == newPos) return false; // No move made
+
+  if(board[oldPos].pieceType == 0) return false; // No piece at old position
+
+  if(board[oldPos].pieceType & 24 == playerToMove) return false; // Piece is not of the current player
+  
+  // Check if the piece is moving to a square occupied by a piece of the same color
+  if((board[oldPos].pieceType & WHITE) == (board[newPos].pieceType & WHITE)) return false;
+
+  // Simulate the move and check if it results in the king being in check
+  return !simultateMove(oldPos, newPos);
+}
+
+/**
+ * @brief Calculates all legal moves for the current position and stores them in the possibleMoves array.
+ * 
+ * This function iterates through all squares on the board, checks if there is a piece of the current player,
+ * and generates a bitboard of possible moves for that piece. It then checks if each move is legal and stores
+ * the legal moves in the possibleMoves array.
+ */
+void calcAllLegalMoves() {
+  int moveIndex = 0;
+
+  for(int i = 0; i < 64; i++) {
+    if(board[i].pieceType == 0 || board[i].pieceType & playerToMove == 0) continue; // No piece of the right color at this position
+
+    uint64_t possibleMoveBitBoard = getPossibleMoveBitBoard(i);
+
+    while(possibleMoveBitBoard) {
+      int movePos = ctzll(possibleMoveBitBoard); // Get the index of the least significant bit
+      possibleMoveBitBoard &= ~(1ULL << movePos); // Clear the bit at movePos
+
+      // Check if the move is legal
+      if(moveIsLegal(i, movePos)) {
+        possibleMoves[moveIndex++] = (i << 8) | movePos; // Store the move in the possibleMoves array
+      }
+    }
+  }
+}
+
+/**
+ * @brief Counts the number of trailing zeros in a 64-bit integer.
+ * 
+ * This function uses the _BitScanForward64 intrinsic to find the index of the least significant bit that is set.
+ * If the input is zero, it returns -1 to indicate an undefined result.
+ * 
+ * @param mask The 64-bit integer to check.
+ * @return int The index of the least significant bit that is set, or -1 if the input is zero.
+ * @note This function is specific to Windows x64 and uses the _BitScanForward64 intrinsic. 
+ */
+int ctzll(uint64_t mask) {
+    unsigned long index;
+    if (_BitScanForward64(&index, mask))
+        return (int)index;
+    return -1; // Undefined if mask == 0
 }
 
 int main() {
@@ -449,5 +718,6 @@ int main() {
 
     loadFEN("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
     printBoard();
-    printBitmask(getPossibleMovesQueen(startingPos));
+    printBitmask(getPossibleMoveBitBoardRook(startingPos));
+    printBitmask(getPossibleMoveBitBoard(1));
 }
