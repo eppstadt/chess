@@ -113,6 +113,7 @@ int numOfFullMoves;
 int lastMove[2];
 
 //Stores all the possible Moves in the current position
+//FORMAT  1bit Queen Promotion, 1bit KnightPromotion, 1bit RookPromotion, 1bit BishopPromotion, 6bits for newPos, 6bits for oldPos
 unsigned short possibleMoves[218];
 
 /**
@@ -694,6 +695,8 @@ void calcAllLegalMoves() {
       }
     }
   }
+
+  possibleMoves[moveIndex] = 0; // Mark the end of the moves
 }
 
 /**
@@ -713,6 +716,104 @@ int ctzll(uint64_t mask) {
     return -1; // Undefined if mask == 0
 }
 
+char* getLongAlgebraicNotationFromPosition(short position) {
+  static char notationBuffer[6];
+
+  int newPos = position & 63; // Mask to get the position in the range 0-63
+  int oldPos = (position >> 6) & 63; // Extract the old position from the higher bits
+
+  char promotingPiece = '\0';
+  if (position & 0x100) {
+    promotingPiece = 'b'; // Promotion to Bishop
+  } else if (position & 0x200) {
+    promotingPiece = 'r'; // Promotion to Rook
+  } else if (position & 0x300) {
+    promotingPiece = 'k'; // Promotion to Knight
+  } else if (position & 0x400) {
+    promotingPiece = 'q'; // Promotion to Queen
+  }
+  
+
+  char* notation = notationBuffer;
+  notation[0] = 'h' - (oldPos % 8); // file of old position
+  notation[1] = '1' + (oldPos / 8); // rank of old position
+  notation[2] = 'h' - (newPos % 8); // file of new position
+  notation[3] = '1' + (newPos / 8); // rank of new position
+  notation[4] = promotingPiece; // Promotion indicator
+  notation[5] = '\0';
+  
+  return notation;
+}
+
+int getPositionFromLongAlgebraicNotation(char* notation) {
+  int oldPos = (8 - (notation[1] - '1')) * 8 + ('h' - notation[0]);
+  int newPos = (8 - (notation[3] - '1')) * 8 + ('h' - notation[2]);
+
+  int position = (oldPos << 6) | newPos; // Combine old and new positions
+
+  if(notation[4] == 'b') {
+    position |= 0x100; // Bishop promotion
+  } else if(notation[4] == 'r') {
+    position |= 0x200; // Rook promotion
+  } else if(notation[4] == 'k') {
+    position |= 0x300; // Knight promotion
+  } else if(notation[4] == 'q') {
+    position |= 0x400; // Queen promotion
+  }
+
+  return position;
+}
+
+void printPossibleMoves() {
+  for(int i = 0; i < 218; i++) {
+    if(possibleMoves[i] == 0) break; // End of moves
+    printf("%d: %s\n", i, getLongAlgebraicNotationFromPosition((short)possibleMoves[i]));
+  }
+}
+
+void doMove(int position) {
+  int oldPos = (position >> 8) & 63; // Extract the old position from the higher bits
+  int newPos = position & 63; // Mask to get the new position in the range 0-63
+
+  if(moveIsLegal(oldPos, newPos)) {
+    board[newPos] = board[oldPos];
+    board[oldPos] = (Piece){0, 0};
+
+    lastMove[0] = oldPos;
+    lastMove[1] = newPos;
+
+    if(board[newPos].pieceType & WHITE) {
+      tilesWithWhitePieces &= ~(((uint64_t)1) << oldPos);
+      tilesWithWhitePieces |= (((uint64_t)1) << newPos);
+      inBlackCheck = generateWhiteCheckBitBoard();
+    } else {
+      tilesWithBlackPieces &= ~(((uint64_t)1) << oldPos);
+      tilesWithBlackPieces |= (((uint64_t)1) << newPos);
+      inWhiteCheck = generateBlackCheckBitBoard();
+    }
+
+    //TODO: some more variables need to be updated, like castling rights, en passant square, halfmove clock, fullmove number
+
+    // Update playerToMove
+    playerToMove ^= WHITE | BLACK;
+  } else {
+    printf("Illegal move: %s\n", getLongAlgebraicNotationFromPosition((short)position));
+  }
+}
+
+void doLongAlgebraicNotationMove(char* notation) {
+  int position = getPositionFromLongAlgebraicNotation(notation);
+  doMove(position);
+}
+
+void innit(char* FENPosition) {
+  if(strcmp(FENPosition, "startPosition") == 0) {
+    loadFEN("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
+  } else {
+    loadFEN(FENPosition);
+  }
+}
+
 int main() {
     uint64_t startingPos = ((uint64_t)1) << 15; // Example position for a piece, e.g., a knight on b3
 
@@ -720,4 +821,8 @@ int main() {
     printBoard();
     printBitmask(getPossibleMoveBitBoardRook(startingPos));
     printBitmask(getPossibleMoveBitBoard(1));
+
+    possibleMoves[0] = (2 << 6) | 19; // Example move from f1 to e3
+    possibleMoves[1] = 0; // End of moves
+    printPossibleMoves();
 }
