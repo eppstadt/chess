@@ -1,6 +1,7 @@
 #include <stdint.h>
 #include <stdio.h>
-#include <intrin.h>
+#include <string.h>
+//#include <intrin.h>
 
 //types: PAWN = 1, KNIGHT = 2, BISHOP = 3, ROOK = 4, QUEEN = 5, KING = 6, WHITE = 8, BLACK = 16
 typedef unsigned int PieceType;
@@ -670,6 +671,11 @@ bool moveIsLegal(int oldPos, int newPos) {
   return !simultateMove(oldPos, newPos);
 }
 
+int gccCtzll(uint64_t mask) {
+  unsigned long long index = __builtin_ia32_lzcnt_u64(mask);
+  return 63 - index;
+}
+
 /**
  * @brief Calculates all legal moves for the current position and stores them in the possibleMoves array.
  * 
@@ -686,7 +692,7 @@ void calcAllLegalMoves() {
     uint64_t possibleMoveBitBoard = getPossibleMoveBitBoard(i);
 
     while(possibleMoveBitBoard) {
-      int movePos = ctzll(possibleMoveBitBoard); // Get the index of the least significant bit
+      int movePos = gccCtzll(possibleMoveBitBoard); // Get the index of the least significant bit
       possibleMoveBitBoard &= ~(1ULL << movePos); // Clear the bit at movePos
 
       // Check if the move is legal
