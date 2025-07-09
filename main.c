@@ -1,6 +1,6 @@
 #include <stdint.h>
 #include <stdio.h>
-#include <intrin.h>
+#include <string.h>
 
 //types: PAWN = 1, KNIGHT = 2, BISHOP = 3, ROOK = 4, QUEEN = 5, KING = 6, WHITE = 8, BLACK = 16
 typedef unsigned int PieceType;
@@ -763,12 +763,12 @@ bool moveIsLegal(int oldPos, int newPos, int promotionType) {
 
   if(board[oldPos].pieceType == 0) return false; // No piece at old position
 
-  if(board[oldPos].pieceType & 24 != playerToMove) return false; // Piece is not of the current player
+  if((board[oldPos].pieceType & 24) != playerToMove) return false; // Piece is not of the current player
   
   // Check if the piece is moving to a square occupied by a piece of the same color
   if((board[oldPos].pieceType & playerToMove) == (board[newPos].pieceType & playerToMove)) return false;
 
-  if(board[oldPos].attackingBitBoard & (((uint64_t)1) << newPos) == 0) return false; // The piece cannot move to the new position
+  if((board[oldPos].attackingBitBoard & (((uint64_t)1) << newPos)) == 0) return false; // The piece cannot move to the new position
 
   if(promotionType != 0 && ((board[oldPos].pieceType & PAWN) == 0 || (newPos < 55 && newPos > 7))) return false; // Promotion is only allowed for pawns
 
@@ -793,6 +793,34 @@ bool moveIsLegalUnsafe(int oldPos, int newPos, int promotionType) {
   if((board[oldPos].pieceType & playerToMove) == (board[newPos].pieceType & playerToMove)) return false;
 
   return !simultateMove(oldPos, newPos, promotionType);
+}
+
+// TODO: change the comment below
+
+/**
+ * @brief Counts the number of trailing zeros in a 64-bit integer.
+ *
+ * This function uses the _BitScanForward64 intrinsic to find the index of the
+ * least significant bit that is set. If the input is zero, it returns -1 to
+ * indicate an undefined result.
+ *
+ * @param mask The 64-bit integer to check.
+ * @return int The index of the least significant bit that is set, or -1 if the
+ * input is zero.
+ * @note This function is specific to Windows x64 and uses the _BitScanForward64
+ * intrinsic.
+ */
+int countTrailingZeros(uint64_t mask) {
+
+  if (mask == 0)
+    return -1;
+
+#ifdef _MSC_VER
+  unsigned long index;
+  _BitScanForward64(&index, mask) return (int)index;
+#else
+  return __builtin_ctzll(mask);
+#endif
 }
 
 /**
@@ -822,7 +850,7 @@ void calcAllLegalMoves() {
     */
 
     while(possibleMoveBitBoard) {
-      int movePos = ctzll(possibleMoveBitBoard); // Get the index of the least significant bit
+      int movePos = countTrailingZeros(possibleMoveBitBoard); // Get the index of the least significant bit
       if(movePos == -1) break; // No more moves available
       possibleMoveBitBoard &= ~(1ULL << movePos); // Clear the bit at movePos
 
@@ -851,23 +879,6 @@ void calcAllLegalMoves() {
   }
 
   possibleMoves[moveIndex] = 0; // Mark the end of the moves
-}
-
-/**
- * @brief Counts the number of trailing zeros in a 64-bit integer.
- * 
- * This function uses the _BitScanForward64 intrinsic to find the index of the least significant bit that is set.
- * If the input is zero, it returns -1 to indicate an undefined result.
- * 
- * @param mask The 64-bit integer to check.
- * @return int The index of the least significant bit that is set, or -1 if the input is zero.
- * @note This function is specific to Windows x64 and uses the _BitScanForward64 intrinsic. 
- */
-int ctzll(uint64_t mask) {
-    unsigned long index;
-    if (_BitScanForward64(&index, mask))
-        return (int)index;
-    return -1; // Undefined if mask == 0
 }
 
 char* getLongAlgebraicNotationFromPosition(short position) {
