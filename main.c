@@ -2,17 +2,17 @@
 #include <stdio.h>
 #include <string.h>
 
-//types: PAWN = 1, KNIGHT = 2, BISHOP = 3, ROOK = 4, QUEEN = 5, KING = 6, WHITE = 8, BLACK = 16
+//types: PAWN = 1, KNIGHT = 2, BISHOP = 4, ROOK = 8, QUEEN = 16, KING = 32, WHITE = 64, BLACK = 128
 typedef unsigned int PieceType;
 #define PAWN   1
 #define KNIGHT 2
-#define BISHOP 3
-#define ROOK   4
-#define QUEEN  5
-#define KING   6
+#define BISHOP 4
+#define ROOK   8
+#define QUEEN  16
+#define KING   32
 
-#define WHITE  8
-#define BLACK  16
+#define WHITE  64
+#define BLACK  128
 
 typedef struct {
   PieceType pieceType;
@@ -28,31 +28,39 @@ typedef struct {
 
 Piece board[64];
 
+// All the tiles where the black king is in check
 uint64_t inWhiteCheck;
+
+// All the tiles where the white king is in check
 uint64_t inBlackCheck;
+
 uint64_t tilesWithWhitePieces;
 uint64_t tilesWithBlackPieces;
 uint64_t tilesWithPieces() {return tilesWithWhitePieces | tilesWithBlackPieces;}
 
+// Not used in the current implementation, but could be useful for future optimizations
 uint64_t tilesWithWhiteRooks;
 uint64_t tilesWithWhitePawns;
 uint64_t tilesWithWhiteKnights;
 uint64_t tilesWithWhiteBishops;
 uint64_t tilesWithWhiteQueens;
-uint64_t tilesWithWhiteKings;
 
 uint64_t tilesWithBlackRooks;
 uint64_t tilesWithBlackPawns;
 uint64_t tilesWithBlackKnights;
 uint64_t tilesWithBlackBishops;
 uint64_t tilesWithBlackQueens;
-uint64_t tilesWithBlackKings;
 
 uint64_t tilesWithRooks() {return tilesWithBlackRooks | tilesWithWhiteRooks;}
 uint64_t tilesWithPawns() {return tilesWithBlackPawns | tilesWithWhitePawns;}
 uint64_t tilesWithKnights() {return tilesWithBlackKnights | tilesWithWhiteKnights;}
 uint64_t tilesWithBishops() {return tilesWithBlackBishops | tilesWithWhiteBishops;}
 uint64_t tilesWithQueens() {return tilesWithBlackQueens | tilesWithWhiteQueens;}
+//
+
+uint64_t tilesWithBlackKings;
+uint64_t tilesWithWhiteKings;
+
 uint64_t tilesWithKings() {return tilesWithBlackKings | tilesWithWhiteKings;}
 
 uint64_t tilesWithSameColoredPieces;
@@ -594,7 +602,7 @@ Point getPossibleMoveBitBoard(int position) {
   uint64_t possibleMoves = 0;
   uint64_t startingPos = ((uint64_t)1) << position;
 
-  int pieceType = board[position].pieceType & 7; // Mask to get the piece type without color
+  int pieceType = board[position].pieceType & (PAWN | ROOK | KNIGHT | BISHOP | KING | QUEEN); // Mask to get the piece type without color
 
   switch(pieceType) {
     case PAWN:
@@ -637,7 +645,7 @@ uint64_t generateWhiteCheckBitBoard(bool updateAttackingBitBoard) {
   Point tmp;
 
   for(int i = 0; i < 64; i++) {
-    if(board[i].pieceType == 0 || board[i].pieceType > 15) continue;
+    if(board[i].pieceType == 0 || board[i].pieceType >= BLACK) continue;
     tmp.x = board[i].attackingBitBoard;
     if(board[i].pieceType == (QUEEN | WHITE) || board[i].pieceType == (ROOK | WHITE) || board[i].pieceType == (BISHOP | WHITE) || i == lastMove[1]) {
       tmp = getPossibleMoveBitBoard(i);
@@ -667,7 +675,7 @@ uint64_t generateBlackCheckBitBoard(bool updateAttackingBitBoard) {
   Point tmp;
 
   for(int i = 0; i < 64; i++) {
-    if(board[i].pieceType < 16) continue;
+    if(board[i].pieceType < BLACK) continue;
     tmp.x = board[i].attackingBitBoard;
     if(board[i].pieceType == (QUEEN | BLACK) || board[i].pieceType == (ROOK | BLACK) || board[i].pieceType == (BISHOP | BLACK) || i == lastMove[1]) {
       tmp = getPossibleMoveBitBoard(i);
@@ -702,6 +710,7 @@ void innitCheckBitBoards() {
  * 
  * @param oldPos The position of the piece before the move.
  * @param newPos The position of the piece after the move.
+ * @param promotionType The type of promotion (0 for no promotion, BISHOP, ROOK, KNIGHT, or QUEEN).
  * 
  * @return bool Returns true if the move would result in the king being in check, otherwise returns false.
  * 
@@ -714,8 +723,15 @@ bool simultateMove(int oldPos, int newPos, int promotionType) {
   // Update the board
   Piece temp = board[newPos];
   if(promotionType != 0) {
-    board[newPos] = (Piece){promotionType | (board[newPos].pieceType & 24), 0}; // Promote the piece
+    board[newPos] = (Piece){promotionType | (board[newPos].pieceType & (BLACK | WHITE)), 0}; // Promote the piece
   } else {
+    if(board[newPos].pieceType & KING) {
+      if(board[newPos].pieceType & WHITE) {
+        tilesWithWhiteKings = ((uint64_t)1) << newPos;
+      } else {
+        tilesWithBlackKings = ((uint64_t)1) << newPos;
+      }
+    }
     board[newPos] = board[oldPos]; // Move the piece
   }
   Piece oldPiece = board[oldPos];
@@ -735,6 +751,14 @@ bool simultateMove(int oldPos, int newPos, int promotionType) {
   // Undo the move
   board[oldPos] = oldPiece;
   board[newPos] = temp;
+
+  if(oldPiece.pieceType & KING) {
+    if(oldPiece.pieceType & WHITE) {
+      tilesWithWhiteKings = ((uint64_t)1) << oldPos;
+    } else {
+      tilesWithBlackKings = ((uint64_t)1) << oldPos;
+    }
+  }
 
   if(board[oldPos].pieceType & WHITE) {
     tilesWithWhitePieces &= ~(((uint64_t)1) << newPos);
@@ -763,7 +787,7 @@ bool moveIsLegal(int oldPos, int newPos, int promotionType) {
 
   if(board[oldPos].pieceType == 0) return false; // No piece at old position
 
-  if((board[oldPos].pieceType & 24) != playerToMove) return false; // Piece is not of the current player
+  if((board[oldPos].pieceType & (WHITE | BLACK)) != playerToMove) return false; // Piece is not of the current player
   
   // Check if the piece is moving to a square occupied by a piece of the same color
   if((board[oldPos].pieceType & playerToMove) == (board[newPos].pieceType & playerToMove)) return false;
@@ -795,20 +819,14 @@ bool moveIsLegalUnsafe(int oldPos, int newPos, int promotionType) {
   return !simultateMove(oldPos, newPos, promotionType);
 }
 
-// TODO: change the comment below
-
 /**
  * @brief Counts the number of trailing zeros in a 64-bit integer.
  *
- * This function uses the _BitScanForward64 intrinsic to find the index of the
- * least significant bit that is set. If the input is zero, it returns -1 to
- * indicate an undefined result.
+ * This function counts the number of trailing zeros in a 64-bit integer by using a builtin function or an intrinsic based on the compiler.
  *
  * @param mask The 64-bit integer to check.
  * @return int The index of the least significant bit that is set, or -1 if the
  * input is zero.
- * @note This function is specific to Windows x64 and uses the _BitScanForward64
- * intrinsic.
  */
 int countTrailingZeros(uint64_t mask) {
 
@@ -817,7 +835,8 @@ int countTrailingZeros(uint64_t mask) {
 
 #ifdef _MSC_VER
   unsigned long index;
-  _BitScanForward64(&index, mask) return (int)index;
+  _BitScanForward64(&index, mask);
+  return (int)index;
 #else
   return __builtin_ctzll(mask);
 #endif
@@ -842,7 +861,7 @@ void calcAllLegalMoves() {
   for(int i = 0; i < 64; i++) {
     if(board[i].pieceType == 0 || (board[i].pieceType & playerToMove) == 0) continue; // No piece of the right color at this position
 
-    uint64_t possibleMoveBitBoard = board[i].attackingBitBoard;
+    uint64_t possibleMoveBitBoard = board[i].attackingBitBoard | board[i].movingBitBoard; // Get the possible moves bitboard for the piece
 
     /* Debugging: print the piece type and position
     printf("Possible moves for piece(%d) at position %d:\n", board[i].pieceType, i);
@@ -943,7 +962,7 @@ void doMove(int position, int promotionType) {
   if(moveIsLegal(oldPos, newPos, promotionType)) {
 
     // Update halfmove clock
-    if(isOn(oldPos, tilesWithPawns()) || isOn(newPos, tilesWithPieces())) {
+    if(board[oldPos].pieceType & PAWN != 0) {
       numOfHalveMoves = 0; // Reset halfmove clock if a pawn moved or a piece was captured
     } else {
       numOfHalveMoves++; // Increment halfmove clock
@@ -961,10 +980,16 @@ void doMove(int position, int promotionType) {
     lastMove[1] = newPos;
 
     if(board[newPos].pieceType & WHITE) {
+      if(board[newPos].pieceType & KING) {
+        tilesWithWhiteKings = ((uint64_t)1) << newPos; // Update the white king position
+      }
       tilesWithWhitePieces &= ~(((uint64_t)1) << oldPos);
       tilesWithWhitePieces |= (((uint64_t)1) << newPos);
       inBlackCheck = generateWhiteCheckBitBoard(true);
     } else {
+      if(board[newPos].pieceType & KING) {
+        tilesWithBlackKings = ((uint64_t)1) << newPos; // Update the black king position
+      }
       tilesWithBlackPieces &= ~(((uint64_t)1) << oldPos);
       tilesWithBlackPieces |= (((uint64_t)1) << newPos);
       inWhiteCheck = generateBlackCheckBitBoard(true);
@@ -990,7 +1015,7 @@ void doMove(int position, int promotionType) {
     }
 
     // Update the en passant square if a pawn moved two squares forward
-    if(isOn(oldPos, tilesWithPawns()) && (newPos == oldPos + 16 || newPos == oldPos - 16)) {
+    if((board[oldPos].pieceType & PAWN != 0) && (newPos == oldPos + 16 || newPos == oldPos - 16)) {
       epsquare = newPos - 8; // Set the en passant square to the square behind the pawn
     } else {
       epsquare = -1; // Reset en passant square if not a two-square pawn move
@@ -1002,6 +1027,14 @@ void doMove(int position, int promotionType) {
 
   } else {
     printf("Illegal move: %s\n", getLongAlgebraicNotationFromPosition((short)position));
+  }
+}
+
+bool isCheckMate() {
+  if(playerToMove == WHITE) {
+    return (inWhiteCheck & tilesWithBlackKings) != 0; // Check if the white king is in checkmate
+  } else {
+    return (inBlackCheck & tilesWithWhiteKings) != 0; // Check if the black king is in checkmate
   }
 }
 
@@ -1047,6 +1080,7 @@ int main() {
 }
 
 /* IDEAS:
-  
+  Do i even need the lastMove array?
+  - Maybe not, but it could be useful for debugging or tracking the last move made.
 
 */
