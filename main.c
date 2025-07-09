@@ -17,7 +17,14 @@ typedef unsigned int PieceType;
 typedef struct {
   PieceType pieceType;
   uint64_t attackingBitBoard;
+  uint64_t movingBitBoard;
 } Piece;
+
+// Just a helper struct to return more than one value from a function
+typedef struct {
+  uint64_t x;
+  uint64_t y;
+} Point;
 
 Piece board[64];
 
@@ -337,8 +344,6 @@ bool isOn(uint64_t pos, uint64_t bitboard) {
   return (pos & bitboard) != 0;
 }
 
-//TODO: moving the pawn two squares forward should only be possible if the pawn is on its starting position, moving a pawn is not attacking a piece
-
 /**
  * @brief Generates a bitboard representing the possible moves for a pawn at a given position.
  * 
@@ -349,38 +354,39 @@ bool isOn(uint64_t pos, uint64_t bitboard) {
  * @param startingPos The position of the pawn on the board (0-63).
  * @return uint64_t A bitboard representing the possible moves for the pawn.
  */
-uint64_t getPossibleMoveBitBoardPawn(uint64_t startingPos) {
-  uint64_t possibleMoves = 0;
+Point getPossibleMoveBitBoardPawn(uint64_t startingPos) {
+  uint64_t possibleAttacks = 0;
+  uint64_t movingBitBoard = 0;
 
   if(playerToMove == WHITE && isNotOn(startingPos, eigthRank)) {
     if(isNotOn(startingPos, hFile) && isOn(startingPos << 7, tilesWithOppositeColoredPieces | (((uint64_t)1) << epsquare))) {
-      possibleMoves |= startingPos << 7;
+      possibleAttacks |= startingPos << 7;
     }
     if(isNotOn(startingPos, aFile) && isOn(startingPos << 9, tilesWithOppositeColoredPieces | (((uint64_t)1) << epsquare))) {
-      possibleMoves |= startingPos << 9;
+      possibleAttacks |= startingPos << 9;
     }
     if(isNotOn(startingPos << 8, tilesWithPieces())) {
-      possibleMoves |= startingPos << 8;
+      movingBitBoard |= startingPos << 8;
       if(isOn(startingPos, secondRank) && isNotOn(startingPos << 16, tilesWithPieces())) {
-        possibleMoves |= startingPos << 16;
+        movingBitBoard |= startingPos << 16;
       }
     }
   } else if(playerToMove == BLACK && isNotOn(startingPos, firstRank)) {
     if(isNotOn(startingPos, hFile) && isOn(startingPos >> 9, tilesWithOppositeColoredPieces | (((uint64_t)1) << epsquare))) {
-      possibleMoves |= startingPos >> 9;
+      possibleAttacks |= startingPos >> 9;
     }
     if(isNotOn(startingPos, aFile) && isOn(startingPos >> 7, tilesWithOppositeColoredPieces | (((uint64_t)1) << epsquare))) {
-      possibleMoves |= startingPos >> 7;
+      possibleAttacks |= startingPos >> 7;
     }
     if(isNotOn(startingPos >> 8, tilesWithPieces())) {
-      possibleMoves |= startingPos >> 8;
+      movingBitBoard |= startingPos >> 8;
       if(isOn(startingPos, seventhRank) && isNotOn(startingPos >> 16, tilesWithPieces())) {
-        possibleMoves |= startingPos >> 16;
+        movingBitBoard |= startingPos >> 16;
       }
     }
   }
 
-  return possibleMoves;
+  return (Point) {possibleAttacks, movingBitBoard};
 }
 
 /**
@@ -532,8 +538,6 @@ uint64_t getPossibleMoveBitBoardQueen(uint64_t startingPos) {
   return getPossibleMoveBitBoardBishop(startingPos) | getPossibleMoveBitBoardRook(startingPos);
 }
 
-//TODO: same Problem as with the pawn, castling is not attacking a piece, so it should not be included in the attackingBitBoard of the king
-
 /**
  * @brief Generates a bitboard representing the possible moves for a king at a given position.
  * 
@@ -543,8 +547,9 @@ uint64_t getPossibleMoveBitBoardQueen(uint64_t startingPos) {
  * @param startingPos The position of the king on the board (0-63).
  * @return uint64_t A bitboard representing the possible moves for the king.
  */
-uint64_t getPossibleMoveBitBoardKing(uint64_t startingPos) {
+Point getPossibleMoveBitBoardKing(uint64_t startingPos) {
   uint64_t possibleMoves = 0;
+  uint64_t movingBitBoard = 0;
 
   possibleMoves |= startingPos << 8;
   possibleMoves |= startingPos >> 8;
@@ -562,14 +567,14 @@ uint64_t getPossibleMoveBitBoardKing(uint64_t startingPos) {
   }
 
   if((castlingAbility[0] || castlingAbility[2]) && isNotOn(startingPos >> 1, tilesWithPieces()) && isNotOn(startingPos >> 2, tilesWithPieces())) {
-    possibleMoves |= startingPos >> 2; // kingside castling
+    movingBitBoard |= startingPos >> 2; // kingside castling
   }
 
   if((castlingAbility[1] || castlingAbility[3]) && isNotOn(startingPos << 1, tilesWithPieces()) && isNotOn(startingPos << 2, tilesWithPieces())) {
-    possibleMoves |= startingPos << 2; // queenside castling
+    movingBitBoard |= startingPos << 2; // queenside castling
   }
 
-  return possibleMoves;
+  return (Point) {possibleMoves, movingBitBoard};
 }
 
 /**
@@ -582,7 +587,9 @@ uint64_t getPossibleMoveBitBoardKing(uint64_t startingPos) {
  * @param position The position of the piece on the board (0-63).
  * @return uint64_t A bitboard representing the possible moves for the piece.
  */
-uint64_t getPossibleMoveBitBoard(int position) {
+Point getPossibleMoveBitBoard(int position) {
+
+  Point possibleMovesPoint = {0, 0};
 
   uint64_t possibleMoves = 0;
   uint64_t startingPos = ((uint64_t)1) << position;
@@ -591,7 +598,7 @@ uint64_t getPossibleMoveBitBoard(int position) {
 
   switch(pieceType) {
     case PAWN:
-      possibleMoves = getPossibleMoveBitBoardPawn(startingPos);
+      possibleMovesPoint = getPossibleMoveBitBoardPawn(startingPos);
       break;
     case KNIGHT:
       possibleMoves = getPossibleMoveBitBoardKnight(startingPos);
@@ -606,11 +613,13 @@ uint64_t getPossibleMoveBitBoard(int position) {
       possibleMoves = getPossibleMoveBitBoardQueen(startingPos);
       break;
     case KING:
-      possibleMoves = getPossibleMoveBitBoardKing(startingPos);
+      possibleMovesPoint = getPossibleMoveBitBoardKing(startingPos);
       break;
   }
 
-  return possibleMoves;
+  possibleMovesPoint.x |= possibleMoves;
+
+  return possibleMovesPoint;
 }
 
 /**
@@ -625,34 +634,22 @@ uint64_t getPossibleMoveBitBoard(int position) {
  */
 uint64_t generateWhiteCheckBitBoard(bool updateAttackingBitBoard) {
   uint64_t inWhiteCheckTMP = 0;
-  uint64_t tmp;
+  Point tmp;
 
   for(int i = 0; i < 64; i++) {
     if(board[i].pieceType == 0 || board[i].pieceType > 15) continue;
-    tmp = board[i].attackingBitBoard;
+    tmp.x = board[i].attackingBitBoard;
     if(board[i].pieceType == (QUEEN | WHITE) || board[i].pieceType == (ROOK | WHITE) || board[i].pieceType == (BISHOP | WHITE) || i == lastMove[1]) {
       tmp = getPossibleMoveBitBoard(i);
       if(updateAttackingBitBoard) {
-        board[i].attackingBitBoard = tmp;
+        board[i].attackingBitBoard = tmp.x;
+        board[i].movingBitBoard = tmp.y;
       }
     }
-    inWhiteCheckTMP |= tmp;
+    inWhiteCheckTMP |= tmp.x;
   }
 
   return inWhiteCheckTMP;
-}
-
-/**
- * @brief Initializes the attacking bitboards for all pieces on the board.
- * 
- * This function iterates through all pieces on the board and generates their attacking bitboards
- * using the getPossibleMoveBitBoard function. It updates the attackingBitBoard field of each piece.
- */
-void innitCheckBitBoards() {
-  for(int i = 0; i < 64; i++) {
-    if(board[i].pieceType == 0) continue;
-    board[i].attackingBitBoard = getPossibleMoveBitBoard(i);
-  }
 }
 
 /**
@@ -667,21 +664,37 @@ void innitCheckBitBoards() {
  */
 uint64_t generateBlackCheckBitBoard(bool updateAttackingBitBoard) {
   uint64_t inBlackCheckTMP = 0;
-  uint64_t tmp;
+  Point tmp;
 
   for(int i = 0; i < 64; i++) {
     if(board[i].pieceType < 16) continue;
-    tmp = board[i].attackingBitBoard;
+    tmp.x = board[i].attackingBitBoard;
     if(board[i].pieceType == (QUEEN | BLACK) || board[i].pieceType == (ROOK | BLACK) || board[i].pieceType == (BISHOP | BLACK) || i == lastMove[1]) {
       tmp = getPossibleMoveBitBoard(i);
       if(updateAttackingBitBoard) {
-        board[i].attackingBitBoard = tmp;
+        board[i].attackingBitBoard = tmp.x;
+        board[i].movingBitBoard = tmp.y;
       }
     }
-    inBlackCheckTMP |= tmp;
+    inBlackCheckTMP |= tmp.x;
   }
 
   return inBlackCheckTMP;
+}
+
+/**
+ * @brief Initializes the attacking bitboards for all pieces on the board.
+ * 
+ * This function iterates through all pieces on the board and generates their attacking bitboards
+ * using the getPossibleMoveBitBoard function. It updates the attackingBitBoard field of each piece.
+ */
+void innitCheckBitBoards() {
+  for(int i = 0; i < 64; i++) {
+    if(board[i].pieceType == 0) continue;
+    Point tmp = getPossibleMoveBitBoard(i);
+    board[i].attackingBitBoard = tmp.x;
+    board[i].movingBitBoard = tmp.y;
+  }
 }
 
 /**
@@ -792,17 +805,21 @@ bool moveIsLegalUnsafe(int oldPos, int newPos, int promotionType) {
 void calcAllLegalMoves() {
   int moveIndex = 0;
 
+  /* Debugging: print the current state of the board
   printf("Calculating all legal moves for player %s...\n", playerToMove == WHITE ? "White" : "Black");
   printBitmask(tilesWithSameColoredPieces); // Debugging: print the tiles with same colored pieces
   printBitmask(tilesWithOppositeColoredPieces); // Debugging: print the tiles with opposite colored pieces
+  */
 
   for(int i = 0; i < 64; i++) {
     if(board[i].pieceType == 0 || (board[i].pieceType & playerToMove) == 0) continue; // No piece of the right color at this position
 
     uint64_t possibleMoveBitBoard = board[i].attackingBitBoard;
 
+    /* Debugging: print the piece type and position
     printf("Possible moves for piece(%d) at position %d:\n", board[i].pieceType, i);
     printBitmask(possibleMoveBitBoard); // Debugging: print the possible moves bitboard
+    */
 
     while(possibleMoveBitBoard) {
       int movePos = ctzll(possibleMoveBitBoard); // Get the index of the least significant bit
