@@ -7,7 +7,7 @@ EXPORT void innit();
 EXPORT char* getLongAlgebraicNotationFromPosition(short position);
 EXPORT int getPositionFromLongAlgebraicNotation(char* notation);
 EXPORT unsigned short* getPossibleMoves();
-EXPORT void doMove(int position, int promotionType);
+EXPORT void doMove(int position);
 EXPORT void doLongAlgebraicNotationMove(char* notation);
 EXPORT int isCheckMate();
 

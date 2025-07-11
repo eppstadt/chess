@@ -1,7 +1,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
-#include "main.h"
+#include "logic.h"
 
 //types: PAWN = 1, KNIGHT = 2, BISHOP = 4, ROOK = 8, QUEEN = 16, KING = 32, WHITE = 64, BLACK = 128
 typedef unsigned int PieceType;
@@ -991,11 +991,20 @@ void printPossibleMoves() {
  * It updates the halfmove clock, fullmove number, tiles with pieces, and checks for checkmate.
  * 
  * @param position The position in the format used by possibleMoves.
- * @param promotionType The type of promotion (0 for no promotion, BISHOP, ROOK, KNIGHT, or QUEEN).
  */
-void doMove(int position, int promotionType) {
+void doMove(int position) {
   int oldPos = (position >> 8) & 63; // Extract the old position from the higher bits
   int newPos = position & 63; // Mask to get the new position in the range 0-63
+  int promotionType = 0;
+
+  // Extract promotion type from position bits (0x1000, 0x2000, 0x4000, 0x8000)
+  switch (position & 0xF000) {
+    case 0x1000: promotionType = BISHOP; break;
+    case 0x2000: promotionType = ROOK; break;
+    case 0x4000: promotionType = KNIGHT; break;
+    case 0x8000: promotionType = QUEEN; break;
+    default: promotionType = 0; break;
+  }
 
   if(moveIsLegal(oldPos, newPos, promotionType)) {
 
@@ -1093,19 +1102,7 @@ bool isCheckMate() {
  */
 void doLongAlgebraicNotationMove(char* notation) {
   int position = getPositionFromLongAlgebraicNotation(notation);
-  int promotionType = 0;
-
-  if(notation[4] == 'b') {
-    promotionType = BISHOP;
-  } else if (notation[4] == 'r') {
-    promotionType = ROOK;
-  } else if (notation[4] == 'k') {
-    promotionType = KNIGHT;
-  } else if (notation[4] == 'q') {
-    promotionType = QUEEN;
-  }
-
-  doMove(position, promotionType);
+  doMove(position);
 }
 
 /**
