@@ -1,6 +1,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
+#include "main.h"
 
 //types: PAWN = 1, KNIGHT = 2, BISHOP = 4, ROOK = 8, QUEEN = 16, KING = 32, WHITE = 64, BLACK = 128
 typedef unsigned int PieceType;
@@ -900,6 +901,20 @@ void calcAllLegalMoves() {
   possibleMoves[moveIndex] = 0; // Mark the end of the moves
 }
 
+unsigned short* getPossibleMoves() {
+  calcAllLegalMoves(); // Calculate all legal moves and store them in the possibleMoves array
+  return possibleMoves;
+}
+
+/**
+  * @brief Converts a position in the long algebraic notation.
+  * 
+  * This function takes a position in the format explained by possibleMoves and converts it to long algebraic notation.
+  * It returns a string representing the move in long algebraic notation.
+  * 
+  * @param position The position in the format of possibleMoves.
+  * @return char* A string representing the move in long algebraic notation.
+  */
 char* getLongAlgebraicNotationFromPosition(short position) {
   static char notationBuffer[6];
 
@@ -929,6 +944,15 @@ char* getLongAlgebraicNotationFromPosition(short position) {
   return notation;
 }
 
+/**
+ * @brief Converts a long algebraic notation to a position in the format used by possibleMoves.
+ * 
+ * This function takes a long algebraic notation string and converts it to a position in the format used by possibleMoves.
+ * It returns an integer representing the position.
+ * 
+ * @param notation The long algebraic notation string.
+ * @return int The position in the format used by possibleMoves.
+ */
 int getPositionFromLongAlgebraicNotation(char* notation) {
   int oldPos = (8 - (notation[1] - '1')) * 8 + ('h' - notation[0]);
   int newPos = (8 - (notation[3] - '1')) * 8 + ('h' - notation[2]);
@@ -948,6 +972,11 @@ int getPositionFromLongAlgebraicNotation(char* notation) {
   return position;
 }
 
+/**
+ * @brief Prints all possible moves in long algebraic notation.
+ * 
+ * This function iterates through the possibleMoves array and prints each move in long algebraic notation.
+ */
 void printPossibleMoves() {
   for(int i = 0; i < 218; i++) {
     if(possibleMoves[i] == 0) break; // End of moves
@@ -955,6 +984,15 @@ void printPossibleMoves() {
   }
 }
 
+/**
+ * @brief Executes a move on the board.
+ * 
+ * This function takes a position in the format used by possibleMoves and executes the move on the board.
+ * It updates the halfmove clock, fullmove number, tiles with pieces, and checks for checkmate.
+ * 
+ * @param position The position in the format used by possibleMoves.
+ * @param promotionType The type of promotion (0 for no promotion, BISHOP, ROOK, KNIGHT, or QUEEN).
+ */
 void doMove(int position, int promotionType) {
   int oldPos = (position >> 8) & 63; // Extract the old position from the higher bits
   int newPos = position & 63; // Mask to get the new position in the range 0-63
@@ -1030,14 +1068,29 @@ void doMove(int position, int promotionType) {
   }
 }
 
+/**
+ * @brief Checks if the current player is in checkmate.
+ * 
+ * This function checks if the opposite player is in checkmate by checking if the king is in check (i.e, it could be taken by the current player)
+ * 
+ * @return bool Returns true if the opposite player is in checkmate, otherwise returns false.
+ */
 bool isCheckMate() {
   if(playerToMove == WHITE) {
-    return (inWhiteCheck & tilesWithBlackKings) != 0; // Check if the white king is in checkmate
+    return (inWhiteCheck & tilesWithBlackKings) != 0; // Check if the black king is in checkmate
   } else {
-    return (inBlackCheck & tilesWithWhiteKings) != 0; // Check if the black king is in checkmate
+    return (inBlackCheck & tilesWithWhiteKings) != 0; // Check if the white king is in checkmate
   }
 }
 
+/**
+ * @brief Executes a move in long algebraic notation.
+ * 
+ * This function takes a long algebraic notation string, converts it to a position, and executes the move on the board.
+ * It also handles promotions if specified in the notation.
+ * 
+ * @param notation The long algebraic notation string.
+ */
 void doLongAlgebraicNotationMove(char* notation) {
   int position = getPositionFromLongAlgebraicNotation(notation);
   int promotionType = 0;
@@ -1055,6 +1108,14 @@ void doLongAlgebraicNotationMove(char* notation) {
   doMove(position, promotionType);
 }
 
+/**
+ * @brief Initializes the chess board with a given FEN position or the starting position.
+ * 
+ * This function loads the FEN position into the board, initializes the tiles with pieces,
+ * initializes the attacking bitboards for all pieces, and sets the last move to -1 (no move made yet).
+ * 
+ * @param FENPosition The FEN position to load, or "startPosition" for the starting position.
+ */
 void innit(char* FENPosition) {
   if(strcmp(FENPosition, "startPosition") == 0) {
     loadFEN("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
@@ -1068,7 +1129,8 @@ void innit(char* FENPosition) {
   lastMove[1] = -1; // Initialize last move to -1 (no move made yet)
 }
 
-int main() {
+/*
+int test() {
     uint64_t startingPos = ((uint64_t)1) << 15; // Example position for a piece, e.g., a knight on b3
 
     innit("startPosition");
@@ -1078,6 +1140,7 @@ int main() {
     calcAllLegalMoves();
     printPossibleMoves();
 }
+*/
 
 /* IDEAS:
   Do i even need the lastMove array?
