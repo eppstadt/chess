@@ -3,18 +3,6 @@
 #include <string.h>
 #include "logic.h"
 
-//types: PAWN = 1, KNIGHT = 2, BISHOP = 4, ROOK = 8, QUEEN = 16, KING = 32, WHITE = 64, BLACK = 128
-typedef unsigned int PieceType;
-#define PAWN   1
-#define KNIGHT 2
-#define BISHOP 4
-#define ROOK   8
-#define QUEEN  16
-#define KING   32
-
-#define WHITE  64
-#define BLACK  128
-
 typedef struct {
   PieceType pieceType;
   uint64_t attackingBitBoard;
@@ -133,6 +121,20 @@ int lastMove[2];
 unsigned short possibleMoves[218];
 
 /**
+ * @brief Returns an array of PieceType values for all squares on the board.
+ *
+ * @return PieceType* Pointer to a static array of 64 PieceType values.
+ */
+PieceType* getBoard() {
+  static PieceType pieceTypes[64];
+  for (int i = 0; i < 64; i++) {
+    pieceTypes[i] = board[i].pieceType;
+  }
+  return pieceTypes;
+}
+
+
+/**
  * @brief Loads the position from the given FEN-String into the programm
  * 
  * @param FENPosition The FEN-String of a position
@@ -145,8 +147,8 @@ void loadFEN(char *FENPosition) {
 
     int row = 7;
     int col = 7;
-    char color = BLACK;
-    char piece;
+    unsigned char color = BLACK;
+    unsigned char piece;
 
     for(; *position != ' '; position++) {
 
@@ -363,11 +365,14 @@ bool isOn(uint64_t pos, uint64_t bitboard) {
  * @param startingPos The position of the pawn on the board (0-63).
  * @return uint64_t A bitboard representing the possible moves for the pawn.
  */
-Point getPossibleMoveBitBoardPawn(uint64_t startingPos) {
+Point getPossibleMoveBitBoardPawn(uint64_t startingPos, int position) {
   uint64_t possibleAttacks = 0;
   uint64_t movingBitBoard = 0;
 
-  if(playerToMove == WHITE && isNotOn(startingPos, eigthRank)) {
+  //printBitmask(tilesWithOppositeColoredPieces);
+  //printBitmask(tilesWithPieces());
+
+  if(board[position].pieceType & WHITE && isNotOn(startingPos, eigthRank)) {
     if(isNotOn(startingPos, hFile) && isOn(startingPos << 7, tilesWithOppositeColoredPieces | (((uint64_t)1) << epsquare))) {
       possibleAttacks |= startingPos << 7;
     }
@@ -380,7 +385,7 @@ Point getPossibleMoveBitBoardPawn(uint64_t startingPos) {
         movingBitBoard |= startingPos << 16;
       }
     }
-  } else if(playerToMove == BLACK && isNotOn(startingPos, firstRank)) {
+  } else if(board[position].pieceType & BLACK && isNotOn(startingPos, firstRank)) {
     if(isNotOn(startingPos, hFile) && isOn(startingPos >> 9, tilesWithOppositeColoredPieces | (((uint64_t)1) << epsquare))) {
       possibleAttacks |= startingPos >> 9;
     }
@@ -394,7 +399,6 @@ Point getPossibleMoveBitBoardPawn(uint64_t startingPos) {
       }
     }
   }
-
   return (Point) {possibleAttacks, movingBitBoard};
 }
 
@@ -607,7 +611,7 @@ Point getPossibleMoveBitBoard(int position) {
 
   switch(pieceType) {
     case PAWN:
-      possibleMovesPoint = getPossibleMoveBitBoardPawn(startingPos);
+      possibleMovesPoint = getPossibleMoveBitBoardPawn(startingPos, position);
       break;
     case KNIGHT:
       possibleMoves = getPossibleMoveBitBoardKnight(startingPos);
@@ -648,7 +652,7 @@ uint64_t generateWhiteCheckBitBoard(bool updateAttackingBitBoard) {
   for(int i = 0; i < 64; i++) {
     if(board[i].pieceType == 0 || board[i].pieceType >= BLACK) continue;
     tmp.x = board[i].attackingBitBoard;
-    if(board[i].pieceType == (QUEEN | WHITE) || board[i].pieceType == (ROOK | WHITE) || board[i].pieceType == (BISHOP | WHITE) || i == lastMove[1]) {
+    if(board[i].pieceType & WHITE) {
       tmp = getPossibleMoveBitBoard(i);
       if(updateAttackingBitBoard) {
         board[i].attackingBitBoard = tmp.x;
@@ -678,7 +682,7 @@ uint64_t generateBlackCheckBitBoard(bool updateAttackingBitBoard) {
   for(int i = 0; i < 64; i++) {
     if(board[i].pieceType < BLACK) continue;
     tmp.x = board[i].attackingBitBoard;
-    if(board[i].pieceType == (QUEEN | BLACK) || board[i].pieceType == (ROOK | BLACK) || board[i].pieceType == (BISHOP | BLACK) || i == lastMove[1]) {
+    if(board[i].pieceType & BLACK) {
       tmp = getPossibleMoveBitBoard(i);
       if(updateAttackingBitBoard) {
         board[i].attackingBitBoard = tmp.x;
@@ -793,7 +797,7 @@ bool moveIsLegal(int oldPos, int newPos, int promotionType) {
   // Check if the piece is moving to a square occupied by a piece of the same color
   if((board[oldPos].pieceType & playerToMove) == (board[newPos].pieceType & playerToMove)) return false;
 
-  if((board[oldPos].attackingBitBoard & (((uint64_t)1) << newPos)) == 0) return false; // The piece cannot move to the new position
+  if(((board[oldPos].attackingBitBoard | board[oldPos].movingBitBoard) & (((uint64_t)1) << newPos)) == 0) return false; // The piece cannot move to the new position
 
   if(promotionType != 0 && ((board[oldPos].pieceType & PAWN) == 0 || (newPos < 55 && newPos > 7))) return false; // Promotion is only allowed for pawns
 
@@ -864,7 +868,7 @@ void calcAllLegalMoves() {
 
     uint64_t possibleMoveBitBoard = board[i].attackingBitBoard | board[i].movingBitBoard; // Get the possible moves bitboard for the piece
 
-    /* Debugging: print the piece type and position
+    /* // Debugging: print the piece type and position
     printf("Possible moves for piece(%d) at position %d:\n", board[i].pieceType, i);
     printBitmask(possibleMoveBitBoard); // Debugging: print the possible moves bitboard
     */
@@ -954,10 +958,10 @@ char* getLongAlgebraicNotationFromPosition(short position) {
  * @return int The position in the format used by possibleMoves.
  */
 int getPositionFromLongAlgebraicNotation(char* notation) {
-  int oldPos = (8 - (notation[1] - '1')) * 8 + ('h' - notation[0]);
-  int newPos = (8 - (notation[3] - '1')) * 8 + ('h' - notation[2]);
+  int oldPos = (notation[1] - '1') * 8 + ('h' - notation[0]);
+  int newPos = (notation[3] - '1') * 8 + ('h' - notation[2]);
 
-  int position = (oldPos << 6) | newPos; // Combine old and new positions
+  unsigned int position = (newPos << 6) | oldPos; // Combine old and new positions
 
   if(notation[4] == 'b') {
     position |= 0x1000; // Bishop promotion
@@ -993,8 +997,8 @@ void printPossibleMoves() {
  * @param position The position in the format used by possibleMoves.
  */
 void doMove(int position) {
-  int oldPos = (position >> 8) & 63; // Extract the old position from the higher bits
-  int newPos = position & 63; // Mask to get the new position in the range 0-63
+  int newPos = (position >> 6) & 63; // Extract the old position from the higher bits
+  int oldPos = position & 63; // Mask to get the new position in the range 0-63
   int promotionType = 0;
 
   // Extract promotion type from position bits (0x1000, 0x2000, 0x4000, 0x8000)
@@ -1027,20 +1031,19 @@ void doMove(int position) {
     lastMove[1] = newPos;
 
     if(board[newPos].pieceType & WHITE) {
-      if(board[newPos].pieceType & KING) {
-        tilesWithWhiteKings = ((uint64_t)1) << newPos; // Update the white king position
-      }
       tilesWithWhitePieces &= ~(((uint64_t)1) << oldPos);
       tilesWithWhitePieces |= (((uint64_t)1) << newPos);
-      inBlackCheck = generateWhiteCheckBitBoard(true);
     } else {
-      if(board[newPos].pieceType & KING) {
-        tilesWithBlackKings = ((uint64_t)1) << newPos; // Update the black king position
-      }
       tilesWithBlackPieces &= ~(((uint64_t)1) << oldPos);
       tilesWithBlackPieces |= (((uint64_t)1) << newPos);
-      inWhiteCheck = generateBlackCheckBitBoard(true);
     }
+
+    if(board[newPos].pieceType & KING) {
+        tilesWithWhiteKings = ((uint64_t)1) << newPos; // Update the white king position
+      }
+
+    inBlackCheck = generateWhiteCheckBitBoard(true);
+    inWhiteCheck = generateBlackCheckBitBoard(true);
 
     // Update the castling rights if the king or rook has moved
     if(castlingAbility[0] || castlingAbility[1] || castlingAbility[2] || castlingAbility[3]) {
@@ -1139,8 +1142,43 @@ int test() {
 }
 */
 
+int main() {
+
+  innit("startPosition"); // Initialize the board with the starting position
+  printf("Initial board:\n");
+  printBoard(); // Print the initial board state
+
+  printf("Possible moves:\n");
+  calcAllLegalMoves(); // Calculate all legal moves
+  printPossibleMoves(); // Print the possible moves
+
+  doMove(getPositionFromLongAlgebraicNotation("e2e4")); // Execute a move (e2 to e4)
+  printf("Board after move e2e4:\n");
+  printBoard(); // Print the board state after the move
+
+  printf("Possible moves after e2e4:\n");
+  calcAllLegalMoves(); // Recalculate all legal moves after the move
+  printPossibleMoves(); // Print the possible moves after the move
+
+  doMove(getPositionFromLongAlgebraicNotation("e7e5")); // Execute a move (e7 to e5)
+  printf("Board after move e7e5:\n");
+  printBoard(); // Print the board state after the move
+
+  printf("Possible moves after e7e5:\n");
+  calcAllLegalMoves(); // Recalculate all legal moves after the move
+  printPossibleMoves(); // Print the possible moves after the move
+
+
+  return 0;
+}
+
 /* IDEAS:
   Do i even need the lastMove array?
   - Maybe not, but it could be useful for debugging or tracking the last move made.
 
+  Compile with:
+  gcc -o chess.dll -shared -fPIC logic.c -I. -I/usr/include/python3.8 -lpython3.8
+  cl /LD logic.c /Fechess.dll
+
+  TODO: castling moving king and rook, pawn cannot attack for some reason, king moves into check, checkate, stalemate, drawing by repetition, fifty-move rule
 */
