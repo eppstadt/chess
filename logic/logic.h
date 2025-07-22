@@ -15,13 +15,13 @@ typedef unsigned int PieceType;
 #define WHITE  64
 #define BLACK  128
 
-EXPORT void innit();
+EXPORT void innit(char* FENPosition);
 EXPORT char* getLongAlgebraicNotationFromPosition(short position);
 EXPORT int getPositionFromLongAlgebraicNotation(char* notation);
 EXPORT unsigned short* getPossibleMoves();
 EXPORT void doMove(int position);
 EXPORT void doLongAlgebraicNotationMove(char* notation);
 EXPORT int isCheckMate();
-EXPORT PieceType* getBoard();
+EXPORT PieceType *getBoard();
 
 #endif // MAIN_H

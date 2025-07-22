@@ -1013,7 +1013,7 @@ void doMove(int position) {
   if(moveIsLegal(oldPos, newPos, promotionType)) {
 
     // Update halfmove clock
-    if(board[oldPos].pieceType & PAWN != 0) {
+    if((board[oldPos].pieceType & PAWN) != 0) {
       numOfHalveMoves = 0; // Reset halfmove clock if a pawn moved or a piece was captured
     } else {
       numOfHalveMoves++; // Increment halfmove clock
@@ -1065,7 +1065,7 @@ void doMove(int position) {
     }
 
     // Update the en passant square if a pawn moved two squares forward
-    if((board[oldPos].pieceType & PAWN != 0) && (newPos == oldPos + 16 || newPos == oldPos - 16)) {
+    if(((board[oldPos].pieceType & PAWN) != 0) && (newPos == oldPos + 16 || newPos == oldPos - 16)) {
       epsquare = newPos - 8; // Set the en passant square to the square behind the pawn
     } else {
       epsquare = -1; // Reset en passant square if not a two-square pawn move
@@ -1087,7 +1087,7 @@ void doMove(int position) {
  * 
  * @return bool Returns true if the opposite player is in checkmate, otherwise returns false.
  */
-bool isCheckMate() {
+int isCheckMate() {
   if(playerToMove == WHITE) {
     return (inWhiteCheck & tilesWithBlackKings) != 0; // Check if the black king is in checkmate
   } else {
