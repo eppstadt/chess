@@ -1109,7 +1109,7 @@ void doMove(int position) {
   if(moveIsLegal(oldPos, newPos, promotionType)) {
 
     // Update halfmove clock
-    if(board[oldPos].pieceType & PAWN != 0 || board[newPos].pieceType != 0) {
+    if((board[oldPos].pieceType & PAWN) != 0 || board[newPos].pieceType != 0) {
       numOfHalveMoves = 0; // Reset halfmove clock if a pawn moved or a piece was captured
       moveNumber = 0;
     } else {
@@ -1202,7 +1202,7 @@ void doMove(int position) {
     }
 
     // Update the en passant square if a pawn moved two squares forward
-    if((board[oldPos].pieceType & PAWN != 0) && (newPos == oldPos + 16 || newPos == oldPos - 16)) {
+    if(((board[oldPos].pieceType & PAWN) != 0) && (newPos == oldPos + 16 || newPos == oldPos - 16)) {
       epsquare = newPos - 8;
     } else {
       epsquare = -1;
