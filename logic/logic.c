@@ -1,7 +1,8 @@
-#include <stdint.h>
 #include <stdio.h>
-#include <string.h>
+#include <stdlib.h>
 #include "logic.h"
+
+typedef unsigned long long uint64_t;
 
 typedef struct {
   PieceType pieceType;
@@ -17,11 +18,13 @@ typedef struct {
 
 Piece board[64];
 
+Piece *positionHistorySinceLastNonHalfmove;
+
 // All the tiles where the black king is in check
-uint64_t inWhiteCheck;
+uint64_t tilesInWhiteCheck;
 
 // All the tiles where the white king is in check
-uint64_t inBlackCheck;
+uint64_t tilesInBlackCheck;
 
 uint64_t tilesWithWhitePieces;
 uint64_t tilesWithBlackPieces;
@@ -120,6 +123,9 @@ int lastMove[2];
 //FORMAT  1bit Queen Promotion, 1bit KnightPromotion, 1bit RookPromotion, 1bit BishopPromotion, 6bits for newPos, 6bits for oldPos
 unsigned short possibleMoves[218];
 
+bool CheckMate = false;
+bool StaleMate = false;
+
 /**
  * @brief Returns an array of PieceType values for all squares on the board.
  *
@@ -131,6 +137,34 @@ PieceType* getBoard() {
     pieceTypes[i] = board[i].pieceType;
   }
   return pieceTypes;
+}
+
+int moveNumber = 0;
+int positionHistorySize = 10;
+
+bool repeatedPositionThreeTimes() {
+  int numOfRepetitions = 0;
+  for (int i = 0; i < moveNumber; i++) {
+    if (memcmp(&positionHistorySinceLastNonHalfmove[i * 64], board, 64 * sizeof(Piece)) == 0) {
+      numOfRepetitions++;
+      if (numOfRepetitions >= 2) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+void addPosition() {
+  for (int i = 0; i < 64; i++) {
+    positionHistorySinceLastNonHalfmove[moveNumber * 64 + i] = board[i];
+  }
+
+  if(moveNumber >= positionHistorySize) {
+    positionHistorySinceLastNonHalfmove = realloc(positionHistorySinceLastNonHalfmove, positionHistorySize * 64 * sizeof(Piece));
+  }
+
+  moveNumber++;
 }
 
 
@@ -645,19 +679,16 @@ Point getPossibleMoveBitBoard(int position) {
  * 
  * @return uint64_t A bitboard representing the squares where the black king is in check.
  */
-uint64_t generateWhiteCheckBitBoard(bool updateAttackingBitBoard) {
+uint64_t generateWhiteCheckBitBoard(bool updateBitBoards) {
   uint64_t inWhiteCheckTMP = 0;
   Point tmp;
 
   for(int i = 0; i < 64; i++) {
     if(board[i].pieceType == 0 || board[i].pieceType >= BLACK) continue;
-    tmp.x = board[i].attackingBitBoard;
-    if(board[i].pieceType & WHITE) {
-      tmp = getPossibleMoveBitBoard(i);
-      if(updateAttackingBitBoard) {
-        board[i].attackingBitBoard = tmp.x;
-        board[i].movingBitBoard = tmp.y;
-      }
+    tmp = getPossibleMoveBitBoard(i);
+    if(updateBitBoards) {
+      board[i].attackingBitBoard = tmp.x;
+      board[i].movingBitBoard = tmp.y;
     }
     inWhiteCheckTMP |= tmp.x;
   }
@@ -675,19 +706,16 @@ uint64_t generateWhiteCheckBitBoard(bool updateAttackingBitBoard) {
  * 
  * @return uint64_t A bitboard representing the squares where the white king is in check.
  */
-uint64_t generateBlackCheckBitBoard(bool updateAttackingBitBoard) {
+uint64_t generateBlackCheckBitBoard(bool updateBitBoards) {
   uint64_t inBlackCheckTMP = 0;
   Point tmp;
 
   for(int i = 0; i < 64; i++) {
     if(board[i].pieceType < BLACK) continue;
-    tmp.x = board[i].attackingBitBoard;
-    if(board[i].pieceType & BLACK) {
-      tmp = getPossibleMoveBitBoard(i);
-      if(updateAttackingBitBoard) {
-        board[i].attackingBitBoard = tmp.x;
-        board[i].movingBitBoard = tmp.y;
-      }
+    tmp = getPossibleMoveBitBoard(i);
+    if(updateBitBoards) {
+      board[i].attackingBitBoard = tmp.x;
+      board[i].movingBitBoard = tmp.y;
     }
     inBlackCheckTMP |= tmp.x;
   }
@@ -721,20 +749,34 @@ void innitCheckBitBoards() {
  * 
  * @note This function does not check for legality of the move, it only updates the board and the tiles with pieces.
  */
-bool simultateMove(int oldPos, int newPos, int promotionType) {
+bool simulateMove(int oldPos, int newPos, int promotionType) {
 
   bool invalidMove = false;
 
   // Update the board
   Piece temp = board[newPos];
   if(promotionType != 0) {
-    board[newPos] = (Piece){promotionType | (board[newPos].pieceType & (BLACK | WHITE)), 0}; // Promote the piece
+    board[newPos] = (Piece){promotionType | (board[oldPos].pieceType & (BLACK | WHITE)), 0}; // Promote the piece
   } else {
-    if(board[newPos].pieceType & KING) {
-      if(board[newPos].pieceType & WHITE) {
+    if(board[oldPos].pieceType & KING) {
+      if(board[oldPos].pieceType & WHITE) {
         tilesWithWhiteKings = ((uint64_t)1) << newPos;
+        if(oldPos == 3 && newPos == 5) { // White kingside castling
+          board[2] = board[0]; // Move the rook
+          board[0] = (Piece){0, 0}; // Remove the rook from its old position
+        } else if(oldPos == 3 && newPos == 1) { // White queenside castling
+          board[4] = board[7]; // Move the rook
+          board[7] = (Piece){0, 0}; // Remove the rook from its old position
+        }
       } else {
         tilesWithBlackKings = ((uint64_t)1) << newPos;
+        if(oldPos == 59 && newPos == 61) { // Black queenside castling
+          board[60] = board[63]; // Move the rook
+          board[63] = (Piece){0, 0}; // Remove the rook from its old position
+        } else if(oldPos == 59 && newPos == 57) { // Black kingside castling
+          board[58] = board[56]; // Move the rook
+          board[56] = (Piece){0, 0}; // Remove the rook from its old position
+        }
       }
     }
     board[newPos] = board[oldPos]; // Move the piece
@@ -742,14 +784,19 @@ bool simultateMove(int oldPos, int newPos, int promotionType) {
   Piece oldPiece = board[oldPos];
   board[oldPos] = (Piece){0, 0};
 
+  playerToMove ^= WHITE | BLACK;
+  updateTilesWithSameColoredPieces();
+
   // Update the tiles with pieces
   if(board[newPos].pieceType & WHITE) {
     tilesWithWhitePieces &= ~(((uint64_t)1) << oldPos);
     tilesWithWhitePieces |= (((uint64_t)1) << newPos);
+    tilesWithBlackPieces &= ~(((uint64_t)1) << newPos);
     if(generateBlackCheckBitBoard(false) & tilesWithWhiteKings) { invalidMove = true; };
   } else {
     tilesWithBlackPieces &= ~(((uint64_t)1) << oldPos);
     tilesWithBlackPieces |= (((uint64_t)1) << newPos);
+    tilesWithWhitePieces &= ~(((uint64_t)1) << newPos);
     if(generateWhiteCheckBitBoard(false) & tilesWithBlackKings) { invalidMove = true; };
   }
 
@@ -760,18 +807,41 @@ bool simultateMove(int oldPos, int newPos, int promotionType) {
   if(oldPiece.pieceType & KING) {
     if(oldPiece.pieceType & WHITE) {
       tilesWithWhiteKings = ((uint64_t)1) << oldPos;
+      if(newPos == 5 && oldPos == 3) { // Undo white kingside castling
+        board[0] = board[2]; // Restore the rook
+        board[2] = (Piece){0, 0}; // Remove the rook from its new position
+      } else if(newPos == 1 && oldPos == 3) { // Undo white queenside castling
+        board[7] = board[4]; // Restore the rook
+        board[4] = (Piece){0, 0}; // Remove the rook from its new position
+      }
     } else {
       tilesWithBlackKings = ((uint64_t)1) << oldPos;
+      if(newPos == 61 && oldPos == 59) { // Undo black queenside castling
+        board[63] = board[60]; // Restore the rook
+        board[60] = (Piece){0, 0}; // Remove the rook from its new position
+      } else if(newPos == 57 && oldPos == 59) { // Undo black kingside castling
+        board[56] = board[58]; // Restore the rook
+        board[58] = (Piece){0, 0}; // Remove the rook from its new position
+      }
     }
   }
 
   if(board[oldPos].pieceType & WHITE) {
     tilesWithWhitePieces &= ~(((uint64_t)1) << newPos);
     tilesWithWhitePieces |= (((uint64_t)1) << oldPos);
+    if(temp.pieceType & BLACK) {
+      tilesWithBlackPieces |= (((uint64_t)1) << newPos);
+    }
   } else {
     tilesWithBlackPieces &= ~(((uint64_t)1) << newPos);
     tilesWithBlackPieces |= (((uint64_t)1) << oldPos);
+    if(temp.pieceType & WHITE) {
+      tilesWithWhitePieces |= (((uint64_t)1) << newPos);
+    }
   }
+
+  playerToMove ^= WHITE | BLACK;
+  updateTilesWithSameColoredPieces();
 
   return invalidMove;
 }
@@ -802,7 +872,7 @@ bool moveIsLegal(int oldPos, int newPos, int promotionType) {
   if(promotionType != 0 && ((board[oldPos].pieceType & PAWN) == 0 || (newPos < 55 && newPos > 7))) return false; // Promotion is only allowed for pawns
 
   // Simulate the move and check if it results in the king being in check
-  return !simultateMove(oldPos, newPos, promotionType);
+  return !simulateMove(oldPos, newPos, promotionType);
 }
 
 /**
@@ -821,7 +891,7 @@ bool moveIsLegalUnsafe(int oldPos, int newPos, int promotionType) {
 
   if((board[oldPos].pieceType & playerToMove) == (board[newPos].pieceType & playerToMove)) return false;
 
-  return !simultateMove(oldPos, newPos, promotionType);
+  return !simulateMove(oldPos, newPos, promotionType);
 }
 
 /**
@@ -838,13 +908,21 @@ int countTrailingZeros(uint64_t mask) {
   if (mask == 0)
     return -1;
 
-#ifdef _MSC_VER
-  unsigned long index;
-  _BitScanForward64(&index, mask);
-  return (int)index;
-#else
-  return __builtin_ctzll(mask);
-#endif
+  #ifdef _MSC_VER
+    unsigned long index;
+    _BitScanForward64(&index, mask);
+    return (int)index;
+  #else
+    return __builtin_ctzll(mask);
+  #endif
+}
+
+int popCount(uint64_t mask) {
+  #ifdef _MSC_VER
+    return __popcnt64(mask);
+  #else
+    return __builtin_popcountll(mask);
+  #endif
 }
 
 /**
@@ -856,6 +934,7 @@ int countTrailingZeros(uint64_t mask) {
  */
 void calcAllLegalMoves() {
   int moveIndex = 0;
+  memset(possibleMoves, 0, sizeof(possibleMoves)); // Reset the possibleMoves array
 
   /* Debugging: print the current state of the board
   printf("Calculating all legal moves for player %s...\n", playerToMove == WHITE ? "White" : "Black");
@@ -864,6 +943,8 @@ void calcAllLegalMoves() {
   */
 
   for(int i = 0; i < 64; i++) {
+    if(board[i].pieceType == 0) continue;
+
     if(board[i].pieceType == 0 || (board[i].pieceType & playerToMove) == 0) continue; // No piece of the right color at this position
 
     uint64_t possibleMoveBitBoard = board[i].attackingBitBoard | board[i].movingBitBoard; // Get the possible moves bitboard for the piece
@@ -871,38 +952,46 @@ void calcAllLegalMoves() {
     /* // Debugging: print the piece type and position
     printf("Possible moves for piece(%d) at position %d:\n", board[i].pieceType, i);
     printBitmask(possibleMoveBitBoard); // Debugging: print the possible moves bitboard
+    printBitmask(board[i].attackingBitBoard); // Debugging: print the attacking bitboard
+    printBitmask(board[i].movingBitBoard); // Debugging: print the moving bitboard
     */
 
     while(possibleMoveBitBoard) {
-      int movePos = countTrailingZeros(possibleMoveBitBoard); // Get the index of the least significant bit
-      if(movePos == -1) break; // No more moves available
-      possibleMoveBitBoard &= ~(1ULL << movePos); // Clear the bit at movePos
+      int movePos = countTrailingZeros(possibleMoveBitBoard);
+      if(movePos == -1) break;
+      possibleMoveBitBoard &= ~(1ULL << movePos);
 
       if(board[movePos].pieceType & PAWN) {
         // Check for promotion
         if((playerToMove == WHITE && movePos >= 56) || (playerToMove == BLACK && movePos <= 7)) {
-          // Check for promotion to Bishop, Rook, Knight or Queen
           if(moveIsLegalUnsafe(i, movePos, BISHOP)) {
-            possibleMoves[moveIndex++] = i | (movePos << 6) | 0x100; // Bishop promotion
+            possibleMoves[moveIndex++] = i | (movePos << 6) | 0x100;
           } else if (moveIsLegalUnsafe(i, movePos, ROOK)) {
-            possibleMoves[moveIndex++] = i | (movePos << 6) | 0x200; // Rook promotion
+            possibleMoves[moveIndex++] = i | (movePos << 6) | 0x200;
           } else if (moveIsLegalUnsafe(i, movePos, KNIGHT)) {
-            possibleMoves[moveIndex++] = i | (movePos << 6) | 0x400; // Knight promotion
+            possibleMoves[moveIndex++] = i | (movePos << 6) | 0x400;
           } else if (moveIsLegalUnsafe(i, movePos, QUEEN)) {
-            possibleMoves[moveIndex++] = i | (movePos << 6) | 0x800; // Queen promotion
+            possibleMoves[moveIndex++] = i | (movePos << 6) | 0x800;
           }
           continue;
         }
       }
 
-      // Check if the move is legal
       if(moveIsLegalUnsafe(i, movePos, 0)) {
-        possibleMoves[moveIndex++] = i | (movePos << 6); // Store the move in the possibleMoves array
+        possibleMoves[moveIndex++] = i | (movePos << 6);
       }
     }
   }
 
   possibleMoves[moveIndex] = 0; // Mark the end of the moves
+
+  if(moveIndex == 0) {
+    if(isCheckMate()) {
+      CheckMate = true;
+    } else {
+      StaleMate = true;
+    }
+  }
 }
 
 unsigned short* getPossibleMoves() {
@@ -986,6 +1075,7 @@ void printPossibleMoves() {
     if(possibleMoves[i] == 0) break; // End of moves
     printf("%d: %s\n", i, getLongAlgebraicNotationFromPosition(possibleMoves[i]));
   }
+  printf("\n");
 }
 
 /**
@@ -997,6 +1087,12 @@ void printPossibleMoves() {
  * @param position The position in the format used by possibleMoves.
  */
 void doMove(int position) {
+
+  if(StaleMate || CheckMate) {
+    printf("Cannot make a move, game is over.\n");
+    return;
+  }
+
   int newPos = (position >> 6) & 63; // Extract the old position from the higher bits
   int oldPos = position & 63; // Mask to get the new position in the range 0-63
   int promotionType = 0;
@@ -1013,18 +1109,35 @@ void doMove(int position) {
   if(moveIsLegal(oldPos, newPos, promotionType)) {
 
     // Update halfmove clock
-    if(board[oldPos].pieceType & PAWN != 0) {
+    if(board[oldPos].pieceType & PAWN != 0 || board[newPos].pieceType != 0) {
       numOfHalveMoves = 0; // Reset halfmove clock if a pawn moved or a piece was captured
+      moveNumber = 0;
     } else {
       numOfHalveMoves++; // Increment halfmove clock
+      if(numOfHalveMoves >= 50) {
+        StaleMate = true; // If the halfmove clock reaches 50, it's a stalemate
+        return;
+      }
     }
 
-    // Update the fullmove number
     if(playerToMove == BLACK) {
       numOfFullMoves++;
     }
 
-    board[newPos] = board[oldPos];
+    if(board[oldPos].pieceType & PAWN && (newPos / 8 == 0 || newPos / 8 == 7)) {
+      if(promotionType == BISHOP) {
+        board[newPos] = (Piece){BISHOP | playerToMove, 0};
+      } else if(promotionType == ROOK) {
+        board[newPos] = (Piece){ROOK | playerToMove, 0};
+      } else if(promotionType == KNIGHT) {
+        board[newPos] = (Piece){KNIGHT | playerToMove, 0};
+      } else if(promotionType == QUEEN) {
+        board[newPos] = (Piece){QUEEN | playerToMove, 0};
+      }
+    } else {
+      board[newPos] = board[oldPos];
+    }
+    
     board[oldPos] = (Piece){0, 0};
 
     lastMove[0] = oldPos;
@@ -1033,17 +1146,41 @@ void doMove(int position) {
     if(board[newPos].pieceType & WHITE) {
       tilesWithWhitePieces &= ~(((uint64_t)1) << oldPos);
       tilesWithWhitePieces |= (((uint64_t)1) << newPos);
+      tilesWithBlackPieces &= ~(((uint64_t)1) << newPos);
     } else {
       tilesWithBlackPieces &= ~(((uint64_t)1) << oldPos);
       tilesWithBlackPieces |= (((uint64_t)1) << newPos);
+      tilesWithWhitePieces &= ~(((uint64_t)1) << newPos);
     }
 
     if(board[newPos].pieceType & KING) {
+      if(board[newPos].pieceType & WHITE) {
         tilesWithWhiteKings = ((uint64_t)1) << newPos; // Update the white king position
+        if(oldPos == 3 && newPos == 1) { // White kingside castling
+          board[2] = board[0]; // Move the rook
+          board[0] = (Piece){0, 0}; // Remove the rook from its old position
+        } else if(oldPos == 3 && newPos == 5) { // White queenside castling
+          board[4] = board[7]; // Move the rook
+          board[7] = (Piece){0, 0}; // Remove the rook from its old position
+        }
+      } else {
+        tilesWithBlackKings = ((uint64_t)1) << newPos; // Update the black king position
+        if(oldPos == 59 && newPos == 61) { // Black queenside castling
+          board[60] = board[63]; // Move the rook
+          board[63] = (Piece){0, 0}; // Remove the rook from its old position
+        } else if(oldPos == 59 && newPos == 57) { // Black kingside castling
+          board[58] = board[56]; // Move the rook
+          board[56] = (Piece){0, 0}; // Remove the rook from its old position
+        }
       }
+    }
 
-    inBlackCheck = generateWhiteCheckBitBoard(true);
-    inWhiteCheck = generateBlackCheckBitBoard(true);
+     // Update playerToMove
+    playerToMove ^= WHITE | BLACK;
+    updateTilesWithSameColoredPieces();
+
+    tilesInBlackCheck = generateWhiteCheckBitBoard(true);
+    tilesInWhiteCheck = generateBlackCheckBitBoard(true);
 
     // Update the castling rights if the king or rook has moved
     if(castlingAbility[0] || castlingAbility[1] || castlingAbility[2] || castlingAbility[3]) {
@@ -1066,14 +1203,36 @@ void doMove(int position) {
 
     // Update the en passant square if a pawn moved two squares forward
     if((board[oldPos].pieceType & PAWN != 0) && (newPos == oldPos + 16 || newPos == oldPos - 16)) {
-      epsquare = newPos - 8; // Set the en passant square to the square behind the pawn
+      epsquare = newPos - 8;
     } else {
-      epsquare = -1; // Reset en passant square if not a two-square pawn move
+      epsquare = -1;
     }
 
-    // Update playerToMove
-    playerToMove ^= WHITE | BLACK;
-    updateTilesWithSameColoredPieces();
+    if(repeatedPositionThreeTimes()) {
+      StaleMate = true;
+    }
+
+    if(popCount(tilesWithWhitePieces) < 3 && popCount(tilesWithBlackPieces) < 3) {
+
+      uint64_t tilesWithWhitePiecesCopy = tilesWithWhitePieces;
+      uint64_t tilesWithBlackPiecesCopy = tilesWithBlackPieces;
+
+      while(tilesWithWhitePiecesCopy) {
+        int pos = countTrailingZeros(tilesWithWhitePiecesCopy);
+        tilesWithWhitePiecesCopy &= ~(1ULL << pos);
+        if(board[pos].pieceType & (PAWN | ROOK | QUEEN)) { 
+          return;
+        }
+      }
+      while(tilesWithBlackPiecesCopy) {
+        int pos = countTrailingZeros(tilesWithBlackPiecesCopy);
+        tilesWithBlackPiecesCopy &= ~(1ULL << pos);
+        if(board[pos].pieceType & (PAWN | ROOK | QUEEN)) { 
+          return;
+        }
+      }
+      StaleMate = true;
+    }
 
   } else {
     printf("Illegal move: %s\n", getLongAlgebraicNotationFromPosition((short)position));
@@ -1088,11 +1247,19 @@ void doMove(int position) {
  * @return bool Returns true if the opposite player is in checkmate, otherwise returns false.
  */
 bool isCheckMate() {
-  if(playerToMove == WHITE) {
-    return (inWhiteCheck & tilesWithBlackKings) != 0; // Check if the black king is in checkmate
+  if(playerToMove == BLACK) {
+    return (tilesInWhiteCheck & tilesWithBlackKings) != 0; // Check if the black king is in checkmate
   } else {
-    return (inBlackCheck & tilesWithWhiteKings) != 0; // Check if the white king is in checkmate
+    return (tilesInBlackCheck & tilesWithWhiteKings) != 0; // Check if the white king is in checkmate
   }
+}
+
+bool getCheckMate() {
+  return CheckMate;
+}
+
+bool getStaleMate() {
+  return StaleMate;
 }
 
 /**
@@ -1127,6 +1294,7 @@ void innit(char* FENPosition) {
   innitCheckBitBoards(); // Initialize the attacking bitboards for all pieces
   lastMove[0] = -1; // Initialize last move to -1 (no move made yet)
   lastMove[1] = -1; // Initialize last move to -1 (no move made yet)
+  positionHistorySinceLastNonHalfmove = malloc(positionHistorySize * 64 * sizeof(Piece));
 }
 
 /*
@@ -1144,30 +1312,17 @@ int test() {
 
 int main() {
 
-  innit("startPosition"); // Initialize the board with the starting position
-  printf("Initial board:\n");
-  printBoard(); // Print the initial board state
+  innit("1k1b4/8/8/8/4N3/8/2K5/8 b - - 0 1");
 
-  printf("Possible moves:\n");
-  calcAllLegalMoves(); // Calculate all legal moves
-  printPossibleMoves(); // Print the possible moves
+  doMove(62 | (61 << 6));
+  printBoard();
 
-  doMove(getPositionFromLongAlgebraicNotation("e2e4")); // Execute a move (e2 to e4)
-  printf("Board after move e2e4:\n");
-  printBoard(); // Print the board state after the move
+  printf("Possible moves after move:\n");
+  calcAllLegalMoves();
+  printPossibleMoves();
 
-  printf("Possible moves after e2e4:\n");
-  calcAllLegalMoves(); // Recalculate all legal moves after the move
-  printPossibleMoves(); // Print the possible moves after the move
-
-  doMove(getPositionFromLongAlgebraicNotation("e7e5")); // Execute a move (e7 to e5)
-  printf("Board after move e7e5:\n");
-  printBoard(); // Print the board state after the move
-
-  printf("Possible moves after e7e5:\n");
-  calcAllLegalMoves(); // Recalculate all legal moves after the move
-  printPossibleMoves(); // Print the possible moves after the move
-
+  printf(getStaleMate() ? "Stalemate\n" : "Not Stalemate\n");
+  printf(getCheckMate() ? "Checkmate\n" : "Not Checkmate\n");
 
   return 0;
 }
@@ -1175,10 +1330,9 @@ int main() {
 /* IDEAS:
   Do i even need the lastMove array?
   - Maybe not, but it could be useful for debugging or tracking the last move made.
+  Maybe add a variable to store the amount of pieces for white and black
 
   Compile with:
   gcc -o chess.dll -shared -fPIC logic.c -I. -I/usr/include/python3.8 -lpython3.8
   cl /LD logic.c /Fechess.dll
-
-  TODO: castling moving king and rook, pawn cannot attack for some reason, king moves into check, checkate, stalemate, drawing by repetition, fifty-move rule
 */

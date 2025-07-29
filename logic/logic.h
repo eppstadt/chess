@@ -21,7 +21,8 @@ EXPORT int getPositionFromLongAlgebraicNotation(char* notation);
 EXPORT unsigned short* getPossibleMoves();
 EXPORT void doMove(int position);
 EXPORT void doLongAlgebraicNotationMove(char* notation);
-EXPORT int isCheckMate();
+EXPORT int getCheckMate();
+EXPORT int getStaleMate();
 EXPORT PieceType* getBoard();
 
 #endif // MAIN_H

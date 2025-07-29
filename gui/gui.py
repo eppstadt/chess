@@ -3,7 +3,7 @@ import os
 import sys
 import platform
 from PyQt5.QtWidgets import *
-from PyQt5.QtGui import QPixmap
+from PyQt5.QtGui import QPixmap, QIcon
 
 class ChessGUI(QWidget):
     def __init__(self, FENPosition="startPosition", parent=None):
@@ -43,12 +43,25 @@ class ChessGUI(QWidget):
         self.drawPieces()
 
     def mousePressEvent(self, event):
+        self.updateGameState()
+        types = {"queenWhite": 0x8000, "rookWhite": 0x2000, "bishopWhite": 0x1000, "knightWhite": 0x4000, "queenBlack": 0x8000, "rookBlack": 0x2000, "bishopBlack": 0x1000, "knightBlack": 0x4000}
         position = (7 - event.x() // 100) + (7 - event.y() // 100) * 8
 
         if(position in [circle[0] if len(circle) > 0 else -1 for circle in self.circles]):
             move = (position << 6) + self.oldPos
-            self.movePiece(self.oldPos, position)
-            self.doMove(move)
+            piece = None
+
+            if(self.board[self.oldPos] & 32 and abs(position - self.oldPos) == 2):
+                    # Handle castling
+                    rook_old_position = (0 if self.oldPos in [3,59] else 7) + (self.oldPos // 8) * 8
+                    rook_new_position = (2 if self.oldPos in [3,59] else 5) + (self.oldPos // 8) * 8
+                    self.movePiece(rook_old_position, rook_new_position)
+            if(self.board[self.oldPos] & 1 and (position // 8 == 0 or position // 8 == 7)):
+                color = "White" if position // 8 == 7 else "Black"
+                piece = self.promotionWindow(color)
+
+            self.movePiece(self.oldPos, position, piece)
+            self.doMove(move | (types.get(piece) if piece else 0))  # Perform the move in the chess logic library
             self.deleteCircles()
             self.board = self.getBoard()  # Update the board state after the move
             return
@@ -56,7 +69,7 @@ class ChessGUI(QWidget):
         self.oldPos = position
         moves = self.getPossibleMovesOfPosition(position)
 
-        self.deleteCircles()  # Clear previous circles
+        self.deleteCircles()
 
         for move in moves:
             x = 7 - ((move >> 6) & 63) % 8
@@ -64,11 +77,11 @@ class ChessGUI(QWidget):
             circle = QLabel(self)
             
             if self.board[(move >> 6) & 63] == 0:
-                circle_size = 30  # or 80 for even bigger circles
+                circle_size = 30 
                 offset = (100 - circle_size) // 2
                 circle.setStyleSheet(f"background: rgba(0, 0, 0, 120); border-radius: {circle_size // 2}px;")
             else:
-                circle_size = 70  # or 80 for even bigger circles
+                circle_size = 70 
                 offset = (100 - circle_size) // 2
                 circle.setStyleSheet(f"""
                     background: transparent;
@@ -80,6 +93,34 @@ class ChessGUI(QWidget):
                 
             circle.show()
             self.circles.append([(7-x)+((7-y)*8), circle])
+
+    def promotionWindow(self, color="White"):
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Choose Promotion Piece")
+        layout = QVBoxLayout(dialog)
+
+        pieces = {"Queen": f"queen{color}", "Rook": f"rook{color}", "Bishop": f"bishop{color}", "Knight": f"knight{color}"}
+        buttons = []
+
+        for name, img in pieces.items():
+            btn = QPushButton(name)
+            icon_path = os.path.abspath(f"./assets/{img}.png").replace("\\", "/")
+            btn.setIcon(QIcon(icon_path))
+            #btn.setIconSize(QIcon(icon_path).pixmap(QSize(80, 80)).size())
+            layout.addWidget(btn)
+            buttons.append(btn)
+
+        selected = {}
+
+        def choose(piece):
+            selected["piece"] = pieces[piece]
+            dialog.accept()
+
+        for btn, (name, _) in zip(buttons, pieces.items()):
+            btn.clicked.connect(lambda _, n=name: choose(n))
+
+        dialog.exec_()
+        return selected.get("piece")
 
     def drawPieces(self):
         self.board = self.getBoard()
@@ -120,20 +161,30 @@ class ChessGUI(QWidget):
                 self.pieces = [p for p in self.pieces if len(p) > 0 and p[0] != position]
                 return
 
-    def movePiece(self, old_position, new_position):
+    def movePiece(self, old_position, new_position, promotion=None):
         for piece in self.pieces:
             if len(piece) > 1 and piece[0] == old_position:
                 for piece2 in self.pieces:
                     if len(piece2) > 1 and piece2[0] == new_position:
                         self.deletePiece(new_position)  # Remove piece if it already exists at new position
-                piece[1].setGeometry((7 - new_position % 8) * 100, (7 - new_position // 8) * 100, 100, 100)
-                piece[0] = new_position
+                if(promotion != None):
+                    self.deletePiece(old_position)  # Remove the old piece if promotion is selected
+                    self.addPiece(new_position, promotion)  # Add the new promoted piece
+                else:
+                    piece[1].setGeometry((7 - new_position % 8) * 100, (7 - new_position // 8) * 100, 100, 100)
+                    piece[0] = new_position
 
     def deleteCircles(self):
         for circle in self.circles:
             if len(circle) > 1:
                 circle[1].deleteLater()
         self.circles = [[]]  # Clear the circles list
+
+    def updateGameState(self):
+        if self.getStaleMate():
+            QMessageBox.information(self, "Game Over", "Stalemate! The game is a draw.")
+        elif self.getCheckMate():
+            QMessageBox.information(self, "Game Over", "Checkmate! The game is over.")
 
     def load_library(self):
         if platform.system() == "Windows":
@@ -169,8 +220,11 @@ class ChessGUI(QWidget):
         lib.doLongAlgebraicNotationMove.argtypes = [ctypes.c_char_p]
         lib.doLongAlgebraicNotationMove.restype = None
 
-        lib.isCheckMate.argtypes = []
-        lib.isCheckMate.restype = ctypes.c_int
+        lib.getStaleMate.argtypes = []
+        lib.getStaleMate.restype = ctypes.c_int
+
+        lib.getCheckMate.argtypes = []
+        lib.getCheckMate.restype = ctypes.c_int
 
         lib.getBoard.argtypes = []
         lib.getBoard.restype = ctypes.POINTER(ctypes.c_uint)
@@ -203,8 +257,11 @@ class ChessGUI(QWidget):
     def doLongAlgebraicNotationMove(self, notation: str):
         self.lib.doLongAlgebraicNotationMove(notation.encode("utf-8"))
 
-    def isCheckMate(self):
-        return self.lib.isCheckMate() == 0
+    def getStaleMate(self):
+        return self.lib.getStaleMate() != 0
+    
+    def getCheckMate(self):
+        return self.lib.getCheckMate() != 0
     
     def getBoard(self):
         board_ptr = self.lib.getBoard()
@@ -218,6 +275,5 @@ if __name__ == "__main__":
     sys.exit(app.exec_())
 
 """
-    TODO: handle promotion, handle castling
-
+ TODO: Implement time control
 """
