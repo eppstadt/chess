@@ -194,7 +194,7 @@ class ChessGUI(QWidget):
         else:
             libname = "libchess.so"
 
-        path = os.path.abspath("./logic/" + libname)
+        path = os.path.abspath("./logic/out/" + libname)
 
         if not os.path.exists(path):
             raise FileNotFoundError(f"The library {libname} does not exist in the expected path: {path}")
