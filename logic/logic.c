@@ -63,6 +63,10 @@ uint64_t tilesWithOppositeColoredPieces;
 */
 unsigned char playerToMove;
 
+char getPlayerToMove() {
+  return playerToMove == WHITE ? 'w' : 'b';
+}
+
 /**
  * @brief Updates tilesWithSameColoredPieces and tilesWithOppositeColoredPieces according to playerToMove
 */

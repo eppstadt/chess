@@ -24,5 +24,6 @@ EXPORT void doLongAlgebraicNotationMove(char* notation);
 EXPORT int getCheckMate();
 EXPORT int getStaleMate();
 EXPORT PieceType *getBoard();
+EXPORT char getPlayerToMove();
 
 #endif // MAIN_H
