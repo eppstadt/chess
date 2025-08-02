@@ -13,28 +13,24 @@ class ChessGUI(QWidget):
 
         self.width = 800
         self.height = 800
-        self.board = [0] * 64  # Initialize the board with empty squares
-        self.circles = [[]]  # List to hold circle labels for possible moves
-        self.pieces = [[]]  # List to hold piece labels
-        self.oldPos = -1  # Variable to hold the last clicked position
+        self.board = [0] * 64
+        self.circles = [[]]
+        self.pieces = [[]]
+        self.lastClickedPosition = -1
         self.timeWhite = 0
         self.timeBlack = 0
-        self.aiEnabled = False
-        self.FENPosition = "startPosition"
-        self.timecontrol = 0
-
+        self.aiEnabled = ""
         self.lastMoveTime = 0
 
         self.setWindowTitle("Chess GUI")
-        self.setFixedSize(self.width, self.height + 50)  # Window is now not resizable
+        self.setFixedSize(self.width, self.height + 50)
         self.setStyleSheet("background: #2c2c2c; color: white; font-size: 16px;")
+
+        self.load_library()
 
         self.settingsWindow()
 
-        self.load_library()
-        self.lib.innit(self.FENPosition.encode("utf-8"))  # Initialize the chess logic library
-
-        self.initUI()
+        self.setupChessboardUI()
 
     def settingsWindow(self):
         settings_dialog = QDialog(self)
@@ -78,28 +74,27 @@ class ChessGUI(QWidget):
     def start_game(self, settings_dialog, fen_text, time_control_white, time_control_black, ai_enabled):
         time_control_white = int(time_control_white.split(" ")[0]) if time_control_white != "None" else -1
         time_control_black = int(time_control_black.split(" ")[0]) if time_control_black != "None" else -1
-        self.FENPosition = fen_text
+        self.lib.init(fen_text.encode("utf-8"))
         self.timeWhite = time_control_white * 60
         self.timeBlack = time_control_black * 60
         self.time_left_white = self.timeWhite
         self.time_left_black = self.timeBlack
         self.aiEnabled = ai_enabled
         self.lastMoveTime = time.time()
+        self.aiEnabled = self.getPlayerToMove() if ai_enabled else ""
         settings_dialog.accept()
 
-    def initUI(self):
-        # Background label
+    def setupChessboardUI(self):
+
         bg_path = os.path.abspath("./assets/chessboard.png").replace("\\", "/")
         bg_label = QLabel(self)
         bg_label.setPixmap(QPixmap(bg_path))
         bg_label.setScaledContents(True)
         bg_label.setGeometry(0, 50, self.width, self.height)
 
-        # Layout on top
         self.layout = QGridLayout(self)
         self.setLayout(self.layout)
 
-        # Add clock labels for white and black
         self.white_clock_label = QLabel(self)
         self.white_clock_label.setGeometry(10, 5, 150, 40)
         self.white_clock_label.setStyleSheet("background: rgba(255,255,255,130); font-size: 20px; border-radius: 10px; padding: 5px;")
@@ -112,21 +107,13 @@ class ChessGUI(QWidget):
         self.black_clock_label.setText("Black: --:--")
         self.black_clock_label.show()
 
-        # Timer for updating clocks
         self.clock_timer = QTimer(self)
         self.clock_timer.timeout.connect(self.update_clocks)
         self.clock_timer.start(1000)
-
-        for i in range(8):
-            self.layout.setRowMinimumHeight(i, 100)
-            self.layout.setRowStretch(i, 1)
-            self.layout.setColumnMinimumWidth(i, 100)
-            self.layout.setColumnStretch(i, 1)
         
         self.drawPieces()
 
     def update_clocks(self):
-        # Only show clocks if time control is enabled
         if self.time_left_white <= 0 or int(time.time() - self.lastMoveTime) >= self.time_left_white:
             self.white_clock_label.setText("White: --:--")
             if(self.timeWhite > 0):
@@ -162,15 +149,15 @@ class ChessGUI(QWidget):
         position = (7 - event.x() // 100) + (7 - (event.y() - 50) // 100) * 8
 
         if(position in [circle[0] if len(circle) > 0 else -1 for circle in self.circles]):
-            move = (position << 6) + self.oldPos
+            move = (position << 6) + self.lastClickedPosition
             piece = None
 
-            if(self.board[self.oldPos] & 32 and abs(position - self.oldPos) == 2):
+            if(self.board[self.lastClickedPosition] & 32 and abs(position - self.lastClickedPosition) == 2):
                     # Handle castling
-                    rook_old_position = (0 if self.oldPos in [3,59] else 7) + (self.oldPos // 8) * 8
-                    rook_new_position = (2 if self.oldPos in [3,59] else 5) + (self.oldPos // 8) * 8
+                    rook_old_position = (0 if self.lastClickedPosition in [3,59] else 7) + (self.lastClickedPosition // 8) * 8
+                    rook_new_position = (2 if self.lastClickedPosition in [3,59] else 5) + (self.lastClickedPosition // 8) * 8
                     self.movePiece(rook_old_position, rook_new_position)
-            if(self.board[self.oldPos] & 1 and (position // 8 == 0 or position // 8 == 7)):
+            if(self.board[self.lastClickedPosition] & 1 and (position // 8 == 0 or position // 8 == 7)):
                 color = "White" if position // 8 == 7 else "Black"
                 piece = self.promotionWindow(color)
 
@@ -179,13 +166,13 @@ class ChessGUI(QWidget):
             else:
                 self.time_left_black -= int(time.time() - self.lastMoveTime)
 
-            self.movePiece(self.oldPos, position, piece)
-            self.doMove(move | (types.get(piece) if piece else 0))  # Perform the move in the chess logic library
+            self.movePiece(self.lastClickedPosition, position, piece)
+            self.doMove(move | (types.get(piece) if piece else 0))
             self.deleteCircles()
-            self.board = self.getBoard()  # Update the board state after the move
+            self.board = self.getBoard()
             return
 
-        self.oldPos = position
+        self.lastClickedPosition = position
         moves = self.getPossibleMovesOfPosition(position)
 
         self.deleteCircles()
@@ -225,7 +212,6 @@ class ChessGUI(QWidget):
             btn = QPushButton(name)
             icon_path = os.path.abspath(f"./assets/{img}.png").replace("\\", "/")
             btn.setIcon(QIcon(icon_path))
-            #btn.setIconSize(QIcon(icon_path).pixmap(QSize(80, 80)).size())
             layout.addWidget(btn)
             buttons.append(btn)
 
@@ -288,10 +274,10 @@ class ChessGUI(QWidget):
             if len(piece) > 1 and piece[0] == old_position:
                 for piece2 in self.pieces:
                     if len(piece2) > 1 and piece2[0] == new_position:
-                        self.deletePiece(new_position)  # Remove piece if it already exists at new position
+                        self.deletePiece(new_position)
                 if(promotion != None):
-                    self.deletePiece(old_position)  # Remove the old piece if promotion is selected
-                    self.addPiece(new_position, promotion)  # Add the new promoted piece
+                    self.deletePiece(old_position)
+                    self.addPiece(new_position, promotion)
                 else:
                     piece[1].setGeometry((7 - new_position % 8) * 100, (7 - new_position // 8) * 100 + 50, 100, 100)
                     piece[0] = new_position
@@ -300,7 +286,7 @@ class ChessGUI(QWidget):
         for circle in self.circles:
             if len(circle) > 1:
                 circle[1].deleteLater()
-        self.circles = [[]]  # Clear the circles list
+        self.circles = [[]]
 
     def updateGameState(self):
         if self.getStaleMate():
@@ -321,11 +307,10 @@ class ChessGUI(QWidget):
         if not os.path.exists(path):
             raise FileNotFoundError(f"The library {libname} does not exist in the expected path: {path}")
 
-        # load DLL/SO/DYLIB
         lib = ctypes.CDLL(path)
 
-        lib.innit.argtypes = []
-        lib.innit.restype = None
+        lib.init.argtypes = []
+        lib.init.restype = None
 
         lib.getLongAlgebraicNotationFromPosition.argtypes = [ctypes.c_short]
         lib.getLongAlgebraicNotationFromPosition.restype = ctypes.c_char_p

@@ -15,7 +15,7 @@ typedef unsigned int PieceType;
 #define WHITE  64
 #define BLACK  128
 
-EXPORT void innit(char* FENPosition);
+EXPORT void init(char* FENPosition);
 EXPORT char* getLongAlgebraicNotationFromPosition(short position);
 EXPORT int getPositionFromLongAlgebraicNotation(char* notation);
 EXPORT unsigned short* getPossibleMoves();

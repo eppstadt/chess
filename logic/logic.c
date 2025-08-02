@@ -407,9 +407,6 @@ Point getPossibleMoveBitBoardPawn(uint64_t startingPos, int position) {
   uint64_t possibleAttacks = 0;
   uint64_t movingBitBoard = 0;
 
-  //printBitmask(tilesWithOppositeColoredPieces);
-  //printBitmask(tilesWithPieces());
-
   if(board[position].pieceType & WHITE && isNotOn(startingPos, eigthRank)) {
     if(isNotOn(startingPos, hFile) && isOn(startingPos << 7, tilesWithOppositeColoredPieces | (((uint64_t)1) << epsquare))) {
       possibleAttacks |= startingPos << 7;
@@ -645,7 +642,7 @@ Point getPossibleMoveBitBoard(int position) {
   uint64_t possibleMoves = 0;
   uint64_t startingPos = ((uint64_t)1) << position;
 
-  int pieceType = board[position].pieceType & (PAWN | ROOK | KNIGHT | BISHOP | KING | QUEEN); // Mask to get the piece type without color
+  int pieceType = board[position].pieceType & (PAWN | ROOK | KNIGHT | BISHOP | KING | QUEEN);
 
   switch(pieceType) {
     case PAWN:
@@ -757,33 +754,32 @@ bool simulateMove(int oldPos, int newPos, int promotionType) {
 
   bool invalidMove = false;
 
-  // Update the board
   Piece temp = board[newPos];
   if(promotionType != 0) {
-    board[newPos] = (Piece){promotionType | (board[oldPos].pieceType & (BLACK | WHITE)), 0}; // Promote the piece
+    board[newPos] = (Piece){promotionType | (board[oldPos].pieceType & (BLACK | WHITE)), 0};
   } else {
     if(board[oldPos].pieceType & KING) {
       if(board[oldPos].pieceType & WHITE) {
         tilesWithWhiteKings = ((uint64_t)1) << newPos;
         if(oldPos == 3 && newPos == 5) { // White kingside castling
-          board[2] = board[0]; // Move the rook
-          board[0] = (Piece){0, 0}; // Remove the rook from its old position
+          board[2] = board[0];
+          board[0] = (Piece){0, 0};
         } else if(oldPos == 3 && newPos == 1) { // White queenside castling
-          board[4] = board[7]; // Move the rook
-          board[7] = (Piece){0, 0}; // Remove the rook from its old position
+          board[4] = board[7];
+          board[7] = (Piece){0, 0};
         }
       } else {
         tilesWithBlackKings = ((uint64_t)1) << newPos;
         if(oldPos == 59 && newPos == 61) { // Black queenside castling
-          board[60] = board[63]; // Move the rook
-          board[63] = (Piece){0, 0}; // Remove the rook from its old position
+          board[60] = board[63];
+          board[63] = (Piece){0, 0};
         } else if(oldPos == 59 && newPos == 57) { // Black kingside castling
-          board[58] = board[56]; // Move the rook
-          board[56] = (Piece){0, 0}; // Remove the rook from its old position
+          board[58] = board[56];
+          board[56] = (Piece){0, 0};
         }
       }
     }
-    board[newPos] = board[oldPos]; // Move the piece
+    board[newPos] = board[oldPos];
   }
   Piece oldPiece = board[oldPos];
   board[oldPos] = (Piece){0, 0};
@@ -791,7 +787,6 @@ bool simulateMove(int oldPos, int newPos, int promotionType) {
   playerToMove ^= WHITE | BLACK;
   updateTilesWithSameColoredPieces();
 
-  // Update the tiles with pieces
   if(board[newPos].pieceType & WHITE) {
     tilesWithWhitePieces &= ~(((uint64_t)1) << oldPos);
     tilesWithWhitePieces |= (((uint64_t)1) << newPos);
@@ -812,20 +807,20 @@ bool simulateMove(int oldPos, int newPos, int promotionType) {
     if(oldPiece.pieceType & WHITE) {
       tilesWithWhiteKings = ((uint64_t)1) << oldPos;
       if(newPos == 5 && oldPos == 3) { // Undo white kingside castling
-        board[0] = board[2]; // Restore the rook
-        board[2] = (Piece){0, 0}; // Remove the rook from its new position
+        board[0] = board[2];
+        board[2] = (Piece){0, 0};
       } else if(newPos == 1 && oldPos == 3) { // Undo white queenside castling
-        board[7] = board[4]; // Restore the rook
-        board[4] = (Piece){0, 0}; // Remove the rook from its new position
+        board[7] = board[4];
+        board[4] = (Piece){0, 0};
       }
     } else {
       tilesWithBlackKings = ((uint64_t)1) << oldPos;
       if(newPos == 61 && oldPos == 59) { // Undo black queenside castling
-        board[63] = board[60]; // Restore the rook
-        board[60] = (Piece){0, 0}; // Remove the rook from its new position
+        board[63] = board[60];
+        board[60] = (Piece){0, 0};
       } else if(newPos == 57 && oldPos == 59) { // Undo black kingside castling
-        board[56] = board[58]; // Restore the rook
-        board[58] = (Piece){0, 0}; // Remove the rook from its new position
+        board[56] = board[58];
+        board[58] = (Piece){0, 0};
       }
     }
   }
@@ -859,23 +854,20 @@ bool simulateMove(int oldPos, int newPos, int promotionType) {
  * @return bool Returns true if the move is legal, otherwise returns false.
  */
 bool moveIsLegal(int oldPos, int newPos, int promotionType) {
-  // Check if the move is valid
   if(oldPos < 0 || oldPos >= 64 || newPos < 0 || newPos >= 64) return false;
 
-  if(oldPos == newPos) return false; // No move made
+  if(oldPos == newPos) return false;
 
-  if(board[oldPos].pieceType == 0) return false; // No piece at old position
+  if(board[oldPos].pieceType == 0) return false;
 
-  if((board[oldPos].pieceType & (WHITE | BLACK)) != playerToMove) return false; // Piece is not of the current player
+  if((board[oldPos].pieceType & (WHITE | BLACK)) != playerToMove) return false;
   
-  // Check if the piece is moving to a square occupied by a piece of the same color
   if((board[oldPos].pieceType & playerToMove) == (board[newPos].pieceType & playerToMove)) return false;
 
   if(((board[oldPos].attackingBitBoard | board[oldPos].movingBitBoard) & (((uint64_t)1) << newPos)) == 0) return false; // The piece cannot move to the new position
 
   if(promotionType != 0 && ((board[oldPos].pieceType & PAWN) == 0 || (newPos < 55 && newPos > 7))) return false; // Promotion is only allowed for pawns
 
-  // Simulate the move and check if it results in the king being in check
   return !simulateMove(oldPos, newPos, promotionType);
 }
 
@@ -966,7 +958,7 @@ void calcAllLegalMoves() {
       possibleMoveBitBoard &= ~(1ULL << movePos);
 
       if(board[movePos].pieceType & PAWN) {
-        // Check for promotion
+        // Handle pawn promotion
         if((playerToMove == WHITE && movePos >= 56) || (playerToMove == BLACK && movePos <= 7)) {
           if(moveIsLegalUnsafe(i, movePos, BISHOP)) {
             possibleMoves[moveIndex++] = i | (movePos << 6) | 0x100;
@@ -987,7 +979,7 @@ void calcAllLegalMoves() {
     }
   }
 
-  possibleMoves[moveIndex] = 0; // Mark the end of the moves
+  possibleMoves[moveIndex] = 0;
 
   if(moveIndex == 0) {
     if(isCheckMate()) {
@@ -999,7 +991,7 @@ void calcAllLegalMoves() {
 }
 
 unsigned short* getPossibleMoves() {
-  calcAllLegalMoves(); // Calculate all legal moves and store them in the possibleMoves array
+  calcAllLegalMoves();
   return possibleMoves;
 }
 
@@ -1015,27 +1007,27 @@ unsigned short* getPossibleMoves() {
 char* getLongAlgebraicNotationFromPosition(short position) {
   static char notationBuffer[6];
 
-  int oldPos = position & 63; // Mask to get the position in the range 0-63
-  int newPos = (position >> 6) & 63; // Extract the old position from the higher bits
+  int oldPos = position & 63;
+  int newPos = (position >> 6) & 63;
 
   char promotingPiece = '\0';
   if (position & 0x1000) {
-    promotingPiece = 'b'; // Promotion to Bishop
+    promotingPiece = 'b';
   } else if (position & 0x2000) {
-    promotingPiece = 'r'; // Promotion to Rook
+    promotingPiece = 'r';
   } else if (position & 0x4000) {
-    promotingPiece = 'k'; // Promotion to Knight
+    promotingPiece = 'k';
   } else if (position & 0x8000) {
-    promotingPiece = 'q'; // Promotion to Queen
+    promotingPiece = 'q';
   }
   
 
   char* notation = notationBuffer;
-  notation[0] = 'h' - (oldPos % 8); // file of old position
-  notation[1] = '1' + (oldPos / 8); // rank of old position
-  notation[2] = 'h' - (newPos % 8); // file of new position
-  notation[3] = '1' + (newPos / 8); // rank of new position
-  notation[4] = promotingPiece; // Promotion indicator
+  notation[0] = 'h' - (oldPos % 8);
+  notation[1] = '1' + (oldPos / 8);
+  notation[2] = 'h' - (newPos % 8);
+  notation[3] = '1' + (newPos / 8);
+  notation[4] = promotingPiece;
   notation[5] = '\0';
   
   return notation;
@@ -1054,16 +1046,16 @@ int getPositionFromLongAlgebraicNotation(char* notation) {
   int oldPos = (notation[1] - '1') * 8 + ('h' - notation[0]);
   int newPos = (notation[3] - '1') * 8 + ('h' - notation[2]);
 
-  unsigned int position = (newPos << 6) | oldPos; // Combine old and new positions
+  unsigned int position = (newPos << 6) | oldPos;
 
   if(notation[4] == 'b') {
-    position |= 0x1000; // Bishop promotion
+    position |= 0x1000;
   } else if(notation[4] == 'r') {
-    position |= 0x2000; // Rook promotion
+    position |= 0x2000;
   } else if(notation[4] == 'k') {
-    position |= 0x4000; // Knight promotion
+    position |= 0x4000;
   } else if(notation[4] == 'q') {
-    position |= 0x8000; // Queen promotion
+    position |= 0x8000;
   }
 
   return position;
@@ -1097,11 +1089,10 @@ void doMove(int position) {
     return;
   }
 
-  int newPos = (position >> 6) & 63; // Extract the old position from the higher bits
-  int oldPos = position & 63; // Mask to get the new position in the range 0-63
+  int newPos = (position >> 6) & 63;
+  int oldPos = position & 63;
   int promotionType = 0;
 
-  // Extract promotion type from position bits (0x1000, 0x2000, 0x4000, 0x8000)
   switch (position & 0xF000) {
     case 0x1000: promotionType = BISHOP; break;
     case 0x2000: promotionType = ROOK; break;
@@ -1114,12 +1105,12 @@ void doMove(int position) {
 
     // Update halfmove clock
     if((board[oldPos].pieceType & PAWN) != 0 || board[newPos].pieceType != 0) {
-      numOfHalveMoves = 0; // Reset halfmove clock if a pawn moved or a piece was captured
+      numOfHalveMoves = 0;
       moveNumber = 0;
     } else {
-      numOfHalveMoves++; // Increment halfmove clock
+      numOfHalveMoves++;
       if(numOfHalveMoves >= 50) {
-        StaleMate = true; // If the halfmove clock reaches 50, it's a stalemate
+        StaleMate = true;
         return;
       }
     }
@@ -1159,34 +1150,32 @@ void doMove(int position) {
 
     if(board[newPos].pieceType & KING) {
       if(board[newPos].pieceType & WHITE) {
-        tilesWithWhiteKings = ((uint64_t)1) << newPos; // Update the white king position
+        tilesWithWhiteKings = ((uint64_t)1) << newPos;
         if(oldPos == 3 && newPos == 1) { // White kingside castling
-          board[2] = board[0]; // Move the rook
-          board[0] = (Piece){0, 0}; // Remove the rook from its old position
+          board[2] = board[0];
+          board[0] = (Piece){0, 0};
         } else if(oldPos == 3 && newPos == 5) { // White queenside castling
-          board[4] = board[7]; // Move the rook
-          board[7] = (Piece){0, 0}; // Remove the rook from its old position
+          board[4] = board[7];
+          board[7] = (Piece){0, 0};
         }
       } else {
-        tilesWithBlackKings = ((uint64_t)1) << newPos; // Update the black king position
+        tilesWithBlackKings = ((uint64_t)1) << newPos;
         if(oldPos == 59 && newPos == 61) { // Black queenside castling
-          board[60] = board[63]; // Move the rook
-          board[63] = (Piece){0, 0}; // Remove the rook from its old position
+          board[60] = board[63];
+          board[63] = (Piece){0, 0};
         } else if(oldPos == 59 && newPos == 57) { // Black kingside castling
-          board[58] = board[56]; // Move the rook
-          board[56] = (Piece){0, 0}; // Remove the rook from its old position
+          board[58] = board[56];
+          board[56] = (Piece){0, 0};
         }
       }
     }
 
-     // Update playerToMove
     playerToMove ^= WHITE | BLACK;
     updateTilesWithSameColoredPieces();
 
     tilesInBlackCheck = generateWhiteCheckBitBoard(true);
     tilesInWhiteCheck = generateBlackCheckBitBoard(true);
 
-    // Update the castling rights if the king or rook has moved
     if(castlingAbility[0] || castlingAbility[1] || castlingAbility[2] || castlingAbility[3]) {
       if(oldPos == 3 || newPos == 3) { // White king moved
         castlingAbility[2] = false;
@@ -1205,7 +1194,6 @@ void doMove(int position) {
       }
     }
 
-    // Update the en passant square if a pawn moved two squares forward
     if(((board[oldPos].pieceType & PAWN) != 0) && (newPos == oldPos + 16 || newPos == oldPos - 16)) {
       epsquare = newPos - 8;
     } else {
@@ -1252,9 +1240,9 @@ void doMove(int position) {
  */
 bool isCheckMate() {
   if(playerToMove == BLACK) {
-    return (tilesInWhiteCheck & tilesWithBlackKings) != 0; // Check if the black king is in checkmate
+    return (tilesInWhiteCheck & tilesWithBlackKings) != 0;
   } else {
-    return (tilesInBlackCheck & tilesWithWhiteKings) != 0; // Check if the white king is in checkmate
+    return (tilesInBlackCheck & tilesWithWhiteKings) != 0;
   }
 }
 
@@ -1287,17 +1275,17 @@ void doLongAlgebraicNotationMove(char* notation) {
  * 
  * @param FENPosition The FEN position to load, or "startPosition" for the starting position.
  */
-void innit(char* FENPosition) {
+void init(char* FENPosition) {
   if(strcmp(FENPosition, "startPosition") == 0) {
     loadFEN("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
   } else {
     loadFEN(FENPosition);
   }
 
-  innitTilesWithPieces(); // Initialize the tiles with pieces bitboards
-  innitCheckBitBoards(); // Initialize the attacking bitboards for all pieces
-  lastMove[0] = -1; // Initialize last move to -1 (no move made yet)
-  lastMove[1] = -1; // Initialize last move to -1 (no move made yet)
+  innitTilesWithPieces();
+  innitCheckBitBoards();
+  lastMove[0] = -1;
+  lastMove[1] = -1;
   positionHistorySinceLastNonHalfmove = malloc(positionHistorySize * 64 * sizeof(Piece));
 }
 
@@ -1316,7 +1304,7 @@ int test() {
 
 int main() {
 
-  innit("1k1b4/8/8/8/4N3/8/2K5/8 b - - 0 1");
+  init("1k1b4/8/8/8/4N3/8/2K5/8 b - - 0 1");
 
   doMove(62 | (61 << 6));
   printBoard();
